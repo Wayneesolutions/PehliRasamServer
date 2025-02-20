@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import * as Customer from '../models/useCases/customer';
 import { successRes } from '../configs/responseConfig';
 import { responseCodes } from '../configs/responseCodes';
+import { uploadFileToS3 } from '../utils/uploadToS3';
 
 export const createCustomer = async (req: Request, res: Response): Promise<any> => {
     try {
@@ -164,6 +165,48 @@ export const deleteCustomer = async (req: Request, res: Response): Promise<any> 
                 statusCode: responseCodes.serverError,
                 message: 'Customer deleted failed',
                 data: error,
+            })
+        );
+    }
+};
+
+export const uploadImage = async (req: Request, res: Response): Promise<any> => {
+    try {
+        const imageData = req.body;
+        // Check if images is defined and is an array
+        if (!Array.isArray(imageData.images)) {
+            return res.status(400).json({
+                statusCode: responseCodes.badRequest,
+                message: 'Images must be an array'
+            });
+        }
+
+        const uploadedUrls: string[] = [];
+
+        for (const image of imageData.images) {
+            const { base64, filename, format } = image;
+            const filePath = `images/customer/${imageData.name}/${filename}`;
+            const url = await uploadFileToS3(base64, filePath, filename, format);
+            uploadedUrls.push(url);
+        }
+
+        // Respond with success and the uploaded URLs
+        return res.status(200).json(
+            successRes({
+                statusCode: responseCodes.success,
+                message: 'Images uploaded successfully',
+                data: {
+                    urls: uploadedUrls
+                }
+            })
+        );
+    } catch (error) {
+        console.log('🚀 ~ uploadImage ~ error:', error);
+
+        return res.status(500).json(
+            successRes({
+                statusCode: responseCodes.serverError,
+                message: 'Internal server error'
             })
         );
     }

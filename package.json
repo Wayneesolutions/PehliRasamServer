@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
     "@types/bcrypt": "^5.0.2",
     "@types/nodemailer": "^6.4.17",
     "bcrypt": "^5.1.1",

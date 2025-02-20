@@ -4,11 +4,11 @@ const customerSchema = new Schema(
     {
         name: { type: String, required: true, minlength: 3, maxlength: 50 },
         email: { type: String, required: true, unique: true, minlength: 3, maxlength: 50 },
-        contact: { 
-            type: String, 
-            required: true, 
-            minlength: 3, 
-            maxlength: 20, 
+        contact: {
+            type: String,
+            required: true,
+            minlength: 3,
+            maxlength: 20,
             match: /^\+?[1-9]\d{1,14}$/
         },
         location: { type: String, required: true, minlength: 3, maxlength: 100 },
@@ -25,15 +25,18 @@ const customerSchema = new Schema(
         registeredBy: { type: String, minlength: 3, maxlength: 50, default: null },
         amount: { type: Number, min: 0, default: null },
         appearance: { type: String, enum: ['Hair-cut', 'Turbaned(with trimmed beard)', 'Gursikh', 'Clean Shaven', 'Amrit-Dhari', 'Female Profile'], default: null },
-        imgURL: { type: String, default: null },
-        imageURL: { type: String, default: null },
+        imgURL: { type: Array, required: true },
 
         gender: { type: String, enum: ['Male', 'Female'], default: null },
         religion: { type: String, enum: ['Sikh', 'Hindu', 'Jain', 'Muslim', 'Christain'], default: null },
         subcaste: { type: String, default: null },
         birthDay: { type: Date, default: null },
         timeofbirth: { type: String, default: null },
-        height: { type: Number, min: 0, default: null },
+        height: {
+            type: String,
+            match: /^([4-7])'([0-9]|10|11)"$/,
+            default: null
+        },
         maritalStatus: {
             type: String,
             enum: ['Never Married', 'Divorced', 'Windowed', 'Separated', 'Annulled', 'Divorced(1 child , Living Together)', 'Divorced(2 children , Living Together)', 'Divorced(3 children , Living Together)', 'Awaiting Divorce', 'Widowed(1 child , Living Together)', 'Divorced(Without child)'],
@@ -63,7 +66,37 @@ const customerSchema = new Schema(
         livingInSince: { type: String, default: null },
         countryLiving: { type: String, default: null },
         countryGrewUpIn: { type: String, default: null },
-        propertyDetails: { type: String, default: null }
+        propertyDetails: { type: String, default: null },
+
+
+
+        //match preference
+        moreAboutPartnerPreference: { type: String, default: null },
+        memeberStatus: { type: String, default: null },
+        preferredGender: { type: String, enum: ['Male', 'Female'], default: null },
+        preferredAge: {
+            min: { type: Number, required: true, min: 18, default: null }, // Ensuring minimum age is 18
+            max: { type: Number, required: true, default: null }
+        },
+        preferredHeight: {
+            min: { type: Number, required: true, min: 49, default: null }, // 4'1" = 49 inches
+            max: { type: Number, required: true, default: null }
+        },
+        preferredReligion: { type: String, enum: ['Sikh', 'Hindu', 'Jain', 'Muslim', 'Christain'], default: null },
+        preferredSubcaste: { type: String, default: null },
+        residencyPreferrence: { type: String, default: null },
+        countryPreferred: { type: String, default: null },
+        cityPreferred: { type: String, default: null },
+        preferredAppearance: { type: String, enum: ['Hair-cut', 'Turbaned(with trimmed beard)', 'Gursikh', 'Clean Shaven', 'Amrit-Dhari', 'Female Profile'], default: null },
+        maritalStatusPreference: {
+            type: String,
+            enum: ['Never Married', 'Divorced', 'Windowed', 'Separated', 'Annulled', 'Divorced(1 child , Living Together)', 'Divorced(2 children , Living Together)', 'Divorced(3 children , Living Together)', 'Awaiting Divorce', 'Widowed(1 child , Living Together)', 'Divorced(Without child)'],
+            default: null
+        },
+        educationPreferrence: { type: String, default: null },
+        employmentPreferrence: { type: String, default: null },
+        vegetarianPreferrence: { type: String, enum: ['Yes', 'No'], default: null },
+        drinkAlcoholPreferrence: { type: String, enum: ['Yes,socially', 'yes,regularly', 'No'], default: null },
     },
     {
         timestamps: true,

@@ -7,6 +7,8 @@ import { validateBody } from '../middlewares/validations';
 
 const router = Router();
 
+router.route('/upload-image').post( customerController.uploadImage);
+
 router.route('/').get(
     customerController.getCustomers
 );

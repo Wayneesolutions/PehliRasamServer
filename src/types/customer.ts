@@ -15,15 +15,15 @@ export interface ICustomer {
     registeredBy?: string;
     amount?: number;
     appearance?: 'Hair-cut' | 'Turbaned(with trimmed beard)' | 'Gursikh' | 'Clean Shaven' | 'Amrit-Dhari' | 'Female Profile';
-    imgURL?: string;
-    imageURL?: string;
+    imgURL?: string[];
+    imageURL: string;
 
     gender?: 'Male' | 'Female';
     religion?: 'Sikh' | 'Hindu' | 'Jain' | 'Muslim' | 'Christain';
     subcaste?: string;
     birthDay?: string | Date;
     timeofbirth?: string;
-    height?: number;
+    height?: string;
     maritalStatus?: 'Never Married' | 'Divorced' | 'Windowed' | 'Separated' | 'Annulled' |
     'Divorced(1 child , Living Together)' | 'Divorced(2 children , Living Together)' |
     'Divorced(3 children , Living Together)' | 'Awaiting Divorce' |
@@ -54,4 +54,33 @@ export interface ICustomer {
     countryLiving?: string;
     countryGrewUpIn?: string;
     propertyDetails?: string;
+
+
+
+
+    moreAboutPartnerPreference?: string;
+    memeberStatus?: string;
+    preferredGender?: 'Male' | 'Female';
+    preferredAge?: {
+        min: number;
+        max: number;
+    };
+    preferredHeight?: {
+        min: number;
+        max: number;
+    };
+    preferredReligion?: 'Sikh' | 'Hindu' | 'Jain' | 'Muslim' | 'Christain';
+    preferredSubcaste?: string;
+    residencyPreferrence?: string;
+    countryPreferred?: string;
+    cityPreferred?: string;
+    preferredAppearance?: 'Hair-cut' | 'Turbaned(with trimmed beard)' | 'Gursikh' | 'Clean Shaven' | 'Amrit-Dhari' | 'Female Profile';
+    maritalStatusPreference?: 'Never Married' | 'Divorced' | 'Windowed' | 'Separated' | 'Annulled' |
+    'Divorced(1 child , Living Together)' | 'Divorced(2 children , Living Together)' |
+    'Divorced(3 children , Living Together)' | 'Awaiting Divorce' |
+    'Widowed(1 child , Living Together)' | 'Divorced(Without child)';
+    educationPreferrence?: string;
+    employmentPreferrence?: string;
+    vegetarianPreferrence?: 'Yes' | 'No';
+    drinkAlcoholPreferrence?: 'Yes,socially' | 'yes,regularly' | 'No';
 }
