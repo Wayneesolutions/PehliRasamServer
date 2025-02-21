@@ -1,17 +1,26 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import { S3Client, PutObjectCommand, PutObjectCommandInput } from '@aws-sdk/client-s3';
 import { getContentType } from './getContentType';
 
-const BUCKET_NAME = process.env.S3_BUCKET!;
-const AWS_REGION = process.env.S3_REGION!;
-const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID!;
-const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY!;
+const BUCKET_NAME = process.env.S3_BUCKET;
+const AWS_REGION = process.env.S3_REGION;
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
 
-// Initialize the S3 client with credentials
+if (!BUCKET_NAME) {
+    throw new Error('S3_BUCKET environment variable is not defined');
+}
+
+console.log("S3 Bucket Name:", BUCKET_NAME); // Debugging log
+
+// Initialize the S3 client
 const client = new S3Client({
     region: AWS_REGION,
     credentials: {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY
+        accessKeyId: AWS_ACCESS_KEY_ID || '',
+        secretAccessKey: AWS_SECRET_ACCESS_KEY || ''
     }
 });
 
@@ -31,14 +40,13 @@ export const uploadFileToS3 = async (
         }
 
         const params: PutObjectCommandInput = {
-            Bucket: BUCKET_NAME,
+            Bucket: BUCKET_NAME!,
             Key: key,
             Body: buffer,
             ContentEncoding: 'base64',
             ContentType: contentType
         };
 
-        // Send the PutObjectCommand with the specified parameters
         await client.send(new PutObjectCommand(params));
 
         return `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${key}`;
@@ -47,5 +55,3 @@ export const uploadFileToS3 = async (
         throw new Error('Something went wrong during the upload');
     }
 };
-
-;
