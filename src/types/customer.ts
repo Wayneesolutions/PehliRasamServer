@@ -16,7 +16,6 @@ export interface ICustomer {
     amount?: number;
     appearance?: 'Hair-cut' | 'Turbaned(with trimmed beard)' | 'Gursikh' | 'Clean Shaven' | 'Amrit-Dhari' | 'Female Profile';
     imgURL?: string[];
-    imageURL: string;
 
     gender?: 'Male' | 'Female';
     religion?: 'Sikh' | 'Hindu' | 'Jain' | 'Muslim' | 'Christain' | 'Buddhist' | 'Spiritual' | 'Other';
@@ -58,7 +57,7 @@ export interface ICustomer {
     'Saini' |
     'Tonk Khatriya' |
     'Other';
-    birthDay?: string | Date;
+    birthDate?: string | Date;
     timeofbirth?: string;
     height?: string;
     maritalStatus?: 'Never Married' | 'Divorced' | 'Windowed' | 'Separated' | 'Annulled' |

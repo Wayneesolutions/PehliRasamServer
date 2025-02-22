@@ -71,7 +71,7 @@ const customerSchema = new Schema(
                 'Other'
             ], default: null
         },
-        birthDay: { type: Date, default: null },
+        birthdate: { type: Date, default: null },
         timeofbirth: { type: String, default: null },
         height: {
             type: String,

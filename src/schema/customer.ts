@@ -19,7 +19,6 @@ export const customerSchema = z.object({
     amount: z.number().nonnegative().optional(),
     appearance: z.enum(['Hair-cut', 'Turbaned(with trimmed beard)', 'Gursikh', 'Clean Shaven', 'Amrit-Dhari', 'Female Profile']).optional(),
     imgURL: z.array(z.string().min(2).max(150)),
-    imageURL: z.string(),
 
     gender: z.enum(['Male', 'Female']),
     religion: z.enum(['Sikh', 'Hindu', 'Jain', 'Buddhist', 'Spiritual', 'Muslim', 'Christain', 'Other']),
@@ -63,7 +62,7 @@ export const customerSchema = z.object({
         'Tonk Khatriya',
         'Other'
     ]).optional(),
-    birthDay: z.union([z.date(), z.string().datetime()]),
+    birthDate: z.union([z.date(), z.string().datetime()]),
     timeofbirth: z.string().optional(),
     height: z
         .string()
