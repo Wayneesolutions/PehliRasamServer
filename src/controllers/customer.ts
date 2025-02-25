@@ -173,11 +173,12 @@ export const deleteCustomer = async (req: Request, res: Response): Promise<any> 
 export const uploadImage = async (req: Request, res: Response): Promise<any> => {
     try {
         const imageData = req.body;
-        // Check if images is defined and is an array
+
+        // Ensure images is an array
         if (!Array.isArray(imageData.images)) {
             return res.status(400).json({
                 statusCode: responseCodes.badRequest,
-                message: 'Images must be an array'
+                message: "Images must be an array",
             });
         }
 
@@ -185,28 +186,35 @@ export const uploadImage = async (req: Request, res: Response): Promise<any> => 
 
         for (const image of imageData.images) {
             const { base64, filename, format } = image;
-            const filePath = `images/customer/${imageData.name}/${filename}`;
+
+            if (!filename) {
+                return res.status(400).json({
+                    statusCode: responseCodes.badRequest,
+                    message: "Filename is required for image upload",
+                });
+            }
+
+
+            const filePath = `images/customer/${filename}`;
+
             const url = await uploadFileToS3(base64, filePath, filename, format);
             uploadedUrls.push(url);
         }
 
-        // Respond with success and the uploaded URLs
         return res.status(200).json(
             successRes({
                 statusCode: responseCodes.success,
-                message: 'Images uploaded successfully',
-                data: {
-                    urls: uploadedUrls
-                }
+                message: "Images uploaded successfully",
+                data: { urls: uploadedUrls },
             })
         );
     } catch (error) {
-        console.log('🚀 ~ uploadImage ~ error:', error);
+        console.log("🚀 ~ uploadImage ~ error:", error);
 
         return res.status(500).json(
             successRes({
                 statusCode: responseCodes.serverError,
-                message: 'Internal server error'
+                message: "Internal server error",
             })
         );
     }
