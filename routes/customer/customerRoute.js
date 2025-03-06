@@ -1,13 +1,17 @@
 const express = require('express');
 const router = express.Router();
+const {validateProfile} = require('../../validations/userValidation');
 
-// const {
-//   registerUser,
+
+const {
+    createCustomer,
 //   loginUser,
-// } = require('../../controllers/customer/customerController');
+} = require('../../controllers/customer/customerController');
 
 // // Public routes
-// router.route('/register').post(registerUser);
+// router.route('/register').post(createCustomer);
+router.post('/register', validateProfile, createCustomer);
+
 // router.route('/login').post(loginUser);
 
 

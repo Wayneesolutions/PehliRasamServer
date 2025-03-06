@@ -1,107 +1,201 @@
-const Joi = require('joi');
+// const { check } = require('express-validator');
 
-const userValidation = {
-  // Registration validation
-  registerSchema: Joi.object({
-    name: Joi.string().min(2).max(50).required()
-      .messages({
-        'string.empty': 'Name is required',
-        'string.min': 'Name should have at least 2 characters',
-        'string.max': 'Name cannot exceed 50 characters'
-      }),
-    email: Joi.string().email().required()
-      .messages({
-        'string.email': 'Please enter valid email',
-        'string.empty': 'Email is required'
-      }),
-    password: Joi.string().min(6).required()
-      .messages({
-        'string.empty': 'Password is required',
-        'string.min': 'Password should be at least 6 characters long'
-      })
-  }),
+// const profileValidationRules = [
+//     // Personal Details
+//     check('personalDetails.fullName').trim().notEmpty().withMessage('Full Name is required'),
+//     check('personalDetails.email').isEmail().withMessage('Valid email is required'),
+//     check('personalDetails.contactNumber').matches(/^\d{10,15}$/).withMessage('Contact number must be 10 to 15 digits'),
+//     check('personalDetails.country').notEmpty().withMessage('Country is required'),
+//     check('personalDetails.location').notEmpty().withMessage('Location is required'),
 
-  // Login validation
-  loginSchema: Joi.object({
-    email: Joi.string().email().required()
-      .messages({
-        'string.email': 'Please enter valid email',
-        'string.empty': 'Email is required'
-      }),
-    password: Joi.string().required()
-      .messages({
-        'string.empty': 'Password is required'
-      })
-  }),
+//     // Basic Information
+//     check('basicInformation.gender').isIn(['Male', 'Female', 'Other']).withMessage('Invalid gender'),
+//     check('basicInformation.birthdate').isISO8601().withMessage('Valid birthdate is required'),
 
-  // Forgot password validation
-  forgotPasswordSchema: Joi.object({
-    email: Joi.string().email().required()
-      .messages({
-        'string.email': 'Please enter valid email',
-        'string.empty': 'Email is required'
-      })
-  }),
+//     // Education & Profession
+//     check('educationProfession.employment').notEmpty().withMessage('Employment is required'),
+//     check('educationProfession.education').notEmpty().withMessage('Education is required'),
 
-  // Reset password validation
-  resetPasswordSchema: Joi.object({
-    password: Joi.string().min(6).required()
-      .messages({
-        'string.empty': 'Password is required',
-        'string.min': 'Password should be at least 6 characters long'
-      }),
-    confirmPassword: Joi.string().valid(Joi.ref('password')).required()
-      .messages({
-        'any.only': 'Passwords do not match'
-      })
-  }),
+//     // Family Details
+//     check('familyDetails.fatherName').notEmpty().withMessage('Father\'s name is required'),
+//     check('familyDetails.motherName').notEmpty().withMessage('Mother\'s name is required'),
 
-  // Update password validation
-  updatePasswordSchema: Joi.object({
-    oldPassword: Joi.string().required()
-      .messages({
-        'string.empty': 'Old password is required'
-      }),
-    password: Joi.string().min(6).required()
-      .messages({
-        'string.empty': 'New password is required',
-        'string.min': 'Password should be at least 6 characters long'
-      })
-  }),
+//     // About Me
+//     check('aboutMe.images').optional().isArray().withMessage('Images must be an array'),
+//     check('aboutMe.images.*').optional().isURL().withMessage('Each image must be a valid URL'),
 
-  // Update profile validation
-  updateProfileSchema: Joi.object({
-    name: Joi.string().min(2).max(50).required()
-      .messages({
-        'string.empty': 'Name is required',
-        'string.min': 'Name should have at least 2 characters',
-        'string.max': 'Name cannot exceed 50 characters'
-      }),
-    email: Joi.string().email().required()
-      .messages({
-        'string.email': 'Please enter valid email',
-        'string.empty': 'Email is required'
-      })
-  }),
+//     // Match Preferences
+//     check('matchPreferences.preferredAgeRange')
+//         .optional()
+//         .matches(/^\d{2}-\d{2}$/).withMessage('Preferred Age Range must be like "25-30"')
+// ];
 
-  // Admin update user validation
-  adminUpdateUserSchema: Joi.object({
-    name: Joi.string().min(2).max(50).required()
-      .messages({
-        'string.empty': 'Name is required',
-        'string.min': 'Name should have at least 2 characters',
-        'string.max': 'Name cannot exceed 50 characters'
-      }),
-    email: Joi.string().email().required()
-      .messages({
-        'string.email': 'Please enter valid email',
-        'string.empty': 'Email is required'
-      }),
-    role: Joi.string().valid('user', 'admin').required()
-      .messages({
-        'any.only': 'Role must be either user or admin'
-      })
-  })
-};
+// module.exports = profileValidationRules;
 
-module.exports = userValidation; 
+
+const { checkSchema, validationResult } = require('express-validator');
+
+const validateProfile = [
+    checkSchema({
+        'personalDetails.fullName': {
+            notEmpty: true,
+            errorMessage: 'Full Name is required'
+        },
+        'personalDetails.email': {
+            isEmail: true,
+            errorMessage: 'Valid email is required'
+        },
+        'personalDetails.contactNumber': {
+            isLength: {
+                options: { min: 10, max: 15 }
+            },
+            errorMessage: 'Contact number should be 10-15 digits'
+        },
+        'personalDetails.country': {
+            notEmpty: true,
+            errorMessage: 'Country is required'
+        },
+        'personalDetails.location': {
+            notEmpty: true,
+            errorMessage: 'Location is required'
+        },
+
+        'basicInformation.gender': {
+            notEmpty: true,
+            errorMessage: 'Gender is required'
+        },
+        'basicInformation.religion': {
+            optional: true
+        },
+        'basicInformation.maritalStatus': {
+            optional: true
+        },
+        'basicInformation.birthdate': {
+            isISO8601: true,
+            errorMessage: 'Birthdate should be in YYYY-MM-DD format'
+        },
+        'basicInformation.caste': {
+            optional: true
+        },
+        'basicInformation.height': {
+            notEmpty: true,
+            errorMessage: 'Height is required'
+        },
+
+        'educationProfession.employment': {
+            notEmpty: true,
+            errorMessage: 'Employment/Job is required'
+        },
+        'educationProfession.education': {
+            notEmpty: true,
+            errorMessage: 'Education is required'
+        },
+
+        'familyDetails.fatherName': {
+            notEmpty: true,
+            errorMessage: 'Father\'s Name is required'
+        },
+        'familyDetails.motherName': {
+            notEmpty: true,
+            errorMessage: 'Mother\'s Name is required'
+        },
+
+        'aboutMe.images': {
+            isArray: true,
+            optional: true,
+            errorMessage: 'Images should be an array of URLs'
+        },
+
+        'matchPreferences.preferredGender': {
+            notEmpty: true,
+            errorMessage: 'Preferred Gender is required'
+        },
+        'matchPreferences.preferredReligion': {
+            optional: true
+        },
+        'matchPreferences.preferredAgeRange.min': {
+            notEmpty: {
+                errorMessage: 'Preferred Age Range (min) is required'
+            },
+            isNumeric: {
+                errorMessage: 'Preferred Age Range (min) should be a number'
+            },
+            toInt: true,
+            custom: {
+                options: (value) => value >= 18 && value <= 100,
+                errorMessage: 'Preferred Age Range (min) should be between 18 and 100'
+            }
+        },
+        'matchPreferences.preferredAgeRange.max': {
+            notEmpty: {
+                errorMessage: 'Preferred Age Range (max) is required'
+            },
+            isNumeric: {
+                errorMessage: 'Preferred Age Range (max) should be a number'
+            },
+            toInt: true,
+            custom: {
+                options: (value) => value >= 18 && value <= 100,
+                errorMessage: 'Preferred Age Range (max) should be between 18 and 100'
+            }
+        },
+        'matchPreferences.preferredHeight.min': {
+            optional: true,
+            isNumeric: {
+                errorMessage: 'Height min should be a number'
+            },
+            toInt: true,
+            custom: {
+                options: (value) => value >= 100 && value <= 250,
+                errorMessage: 'Height min should be between 100 and 250 cm'
+            }
+        },
+        'matchPreferences.preferredHeight.max': {
+            optional: true,
+            isNumeric: {
+                errorMessage: 'Height max should be a number'
+            },
+            toInt: true,
+            custom: {
+                options: (value) => value >= 100 && value <= 250,
+                errorMessage: 'Height max should be between 100 and 250 cm'
+            }
+        },
+        'matchPreferences.caste': {
+            optional: true
+        },
+        'matchPreferences.cityPreferred': {
+            optional: true
+        },
+        'matchPreferences.preferredAppearance': {
+            optional: true
+        },
+        'matchPreferences.maritalStatusPreference': {
+            optional: true
+        },
+        'matchPreferences.educationPreference': {
+            optional: true
+        },
+        'matchPreferences.employmentPreference': {
+            optional: true
+        },
+        'matchPreferences.vegetarianPreference': {
+            isBoolean: true,
+            errorMessage: 'Vegetarian Preference must be boolean'
+        },
+        'matchPreferences.drinkAlcohol': {
+            isBoolean: true,
+            errorMessage: 'Drink Alcohol must be boolean'
+        }
+    }),
+
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        next();
+    }
+];
+
+module.exports = { validateProfile };
