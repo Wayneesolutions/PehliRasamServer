@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const { validationResult } = require("express-validator");
 const FormGroup = require("../../models/customer/FormGroup")
 const FormField = require("../../models/customer/FormField")
+const FormFieldsValue = require("../../models/customer/FromFieldValue")
 const Customer = require("../../models/customer/customerModel")
 const { findMatchingUsers } = require('../../services/matchService');
 
@@ -132,6 +134,120 @@ exports.getMatchingUsers = async (req, res) => {
       const {customerId} = req.body;
       const matches = await findMatchingUsers(customerId);
       res.json({ matches });
+  } catch (error) {
+      res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getCustomerProfile = async (req, res) => {
+  try {
+      const {customerId} = req.body;
+      const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+      const customer = await Customer.aggregate([
+          {
+              $match: { _id: customerObjectId }
+          },
+          {
+              $lookup: {
+                  from: "formfieldsvalues",
+                  localField: "_id",
+                  foreignField: "customeId",
+                  as: "formFields"
+              }
+          },
+          {
+              $lookup: {
+                  from: "formgroups",
+                  localField: "formFields.groupId",
+                  foreignField: "_id",
+                  as: "groups"
+              }
+          },
+          {
+              $lookup: {
+                  from: "formfields",
+                  localField: "formFields.fieldId",
+                  foreignField: "_id",
+                  as: "fields"
+              }
+          },
+          {
+              $project: {
+                  personalDetails: 1,
+                  matchPreferences: 1,
+                  dynamicFields: {
+                      $map: {
+                          input: "$groups",
+                          as: "group",
+                          in: {
+                              groupId: "$$group._id",
+                              groupName: "$$group.name",
+                              fields: {
+                                  $map: {
+                                      input: {
+                                          $filter: {
+                                              input: "$formFields",
+                                              as: "ff",
+                                              cond: { $eq: ["$$ff.groupId", "$$group._id"] }
+                                          }
+                                      },
+                                      as: "ff",
+                                      in: {
+                                          fieldId: "$$ff.fieldId",
+                                          value: "$$ff.value",
+                                          fieldDetails: {
+                                              $arrayElemAt: [
+                                                  {
+                                                      $filter: {
+                                                          input: "$fields",
+                                                          as: "field",
+                                                          cond: { $eq: ["$$field._id", "$$ff.fieldId"] }
+                                                      }
+                                                  },
+                                                  0
+                                              ]
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          },
+          {
+              $project: {
+                  personalDetails: 1,
+                  matchPreferences: 1,
+                  dynamicFields: {
+                      $map: {
+                          input: "$dynamicFields",
+                          as: "group",
+                          in: {
+                              groupId: "$$group.groupId",
+                              groupName: "$$group.groupName",
+                              fields: {
+                                  $map: {
+                                      input: "$$group.fields",
+                                      as: "field",
+                                      in: {
+                                          fieldId: "$$field.fieldId",
+                                          fieldName: "$$field.fieldDetails.attributeName",
+                                          value: "$$field.value"
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      ]);
+      res.status(201).json({
+        message: "Customer details",
+        data: customer
+    });
   } catch (error) {
       res.status(500).json({ message: error.message });
   }
