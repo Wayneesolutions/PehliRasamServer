@@ -104,13 +104,8 @@ exports.createCustomer = async (req, res) => {
             }
           ]);
 
+      const result = await saveUserData(customerId, dynamicField, groupFieldList[0])
 
-      const result = await saveUserData("67c82ebd44d6029e74117673", dynamicField, groupFieldList[0])
-
-      console.log("aaaaaa::::::::::", result)
-
-        // const profile = new Customer(req.body);
-        // const savedProfile = await profile.save();
         res.status(201).json({
             message: "Profile created successfully",
             data: result
