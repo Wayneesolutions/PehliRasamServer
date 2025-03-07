@@ -11,7 +11,9 @@ getClientSubmissions,
 getRecentlySubmittedClients,
 getClientsAddedToday,
 getMatchingUsers,
-getCustomerProfile
+getCustomerProfile,
+getAllFieldsList,
+addCustomer
 } = require('../../controllers/admin/adminController');
 
 // // Public routes
@@ -20,6 +22,8 @@ router.post("/createFromField", validateFormField, form_field)
 router.get("/clientsAddedToday", getClientsAddedToday)
 router.post("/matchingUsers", getMatchingUsers)
 router.post("/customerProfile", getCustomerProfile)
+router.post("/fromFieldList", getAllFieldsList)
+router.post("/addCustomer", addCustomer)
 
 router.route('/getFromGroupList').get(form_group_List);
 router.route('/clientSubmissions').get(getClientSubmissions);

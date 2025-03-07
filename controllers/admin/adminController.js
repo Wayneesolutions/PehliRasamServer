@@ -252,3 +252,178 @@ exports.getCustomerProfile = async (req, res) => {
       res.status(500).json({ message: error.message });
   }
 };
+
+exports.getAllFieldsList = async (req, res) =>{
+  try {
+
+    const staticField = await Object.keys(Customer.schema.paths);
+
+    const dynamicField = await FormField.aggregate([
+      {
+        $lookup: {
+          from: "formgroups", // This should match your actual collection name in MongoDB
+          localField: "form_group_id",
+          foreignField: "_id",
+          as: "formGroup"
+        }
+      },
+      {
+        $unwind: "$formGroup"
+      },
+      {
+        $group: {
+          _id: "$form_group_id",
+          groupName: { $first: "$formGroup.name" },
+          fields: {
+            $push: {
+              attributeId: "$_id",
+              attributeName: "$attributeName",
+              attributeType: "$attributeType",
+              attributeState: "$attributeState",
+            }
+          }
+        }
+      },
+      {
+        $sort: { "groupName": 1 } // Sort by group name (optional)
+      }
+    ]);
+
+
+    res.status(200).json({
+      success: true,
+      result: {
+          staticField,
+          dynamicField
+      }
+  });
+
+    
+} catch (error) {
+  console.error('Error fetching fields list:', error.message);
+
+  res.status(500).json({
+      success: false,
+      message: 'Failed to fetch fields list',
+      error: error.message
+  });
+}
+};
+
+exports.addCustomer = async (req, res) =>{
+  try {
+    // const data = req.body;
+    const { statucVlaue, dyanmicValue } = req.body;
+
+    if (!statucVlaue || !dyanmicValue) {
+      return res.status(400).json({
+          success: false,
+          message: 'Both statucVlaue and dyanmicValue are required'
+      });
+    }
+
+    const personalDetails = statucVlaue.find(item => item.personalDetails)?.personalDetails;
+    const matchPreferences = statucVlaue.find(item => item.matchPreferences)?.matchPreferences;
+
+    if (!personalDetails || !matchPreferences) {
+        return res.status(400).json({
+            success: false,
+            message: 'Both personalDetails and matchPreferences are required inside statucVlaue'
+        });
+    }
+
+    const staticField = {
+        personalDetails: {
+            fullName: statucVlaue[0].personalDetails?.fullName || 'NAN',
+            email: statucVlaue[0].personalDetails?.email || 'NAN',
+            contactNumber: statucVlaue[0].personalDetails?.contactNumber || 'NAN',
+            country: statucVlaue[0].personalDetails?.country || 'NAN',
+            location: statucVlaue[0].personalDetails?.location || 'NAN'
+        },
+        matchPreferences: {
+            preferredGender: statucVlaue[1].matchPreferences?.preferredGender || 'NAN',
+            preferredReligion: statucVlaue[1].matchPreferences?.preferredReligion || 'NAN',
+            // preferredAgeRange: statucVlaue[0].matchPreferences?.preferredAgeRange || 'NAN',
+            // preferredHeight: statucVlaue[0].matchPreferences?.preferredHeight || 'NAN',
+            caste: statucVlaue[1].matchPreferences?.caste || 'NAN',
+            cityPreferred: statucVlaue[1].matchPreferences?.cityPreferred || 'NAN',
+            preferredAppearance: statucVlaue[1].matchPreferences?.preferredAppearance || 'NAN',
+            maritalStatusPreference: statucVlaue[1].matchPreferences?.maritalStatusPreference || 'NAN',
+            educationPreference: statucVlaue[1].matchPreferences?.educationPreference || 'NAN',
+            employmentPreference: statucVlaue[1].matchPreferences?.employmentPreference || 'NAN',
+            vegetarianPreference: statucVlaue[1].matchPreferences?.vegetarianPreference ?? false,
+            drinkAlcohol: statucVlaue[1].matchPreferences?.drinkAlcohol ?? false
+        }
+    };
+    // console.log("statucVlaue:::::", statucVlaue[1])
+    const existingProfile = await Customer.findOne({ 'personalDetails.email': staticField.personalDetails.email });
+
+    if (existingProfile) {
+        return res.status(400).json({ error: 'Email already exists. Please use a different email.' });
+    }
+
+    const customer = new Customer(staticField);
+    const inserCustomeBesicDetail = await customer.save();
+    const customerId = inserCustomeBesicDetail._id
+
+    console.log("customerID::::", customerId)
+
+
+    if (!customerId) {
+      return res.status(400).json({
+          success: false,
+          message: 'Customer ID is required'
+      });
+    }
+
+    if (!dyanmicValue || !Array.isArray(dyanmicValue) || dyanmicValue.length === 0) {
+      return res.status(400).json({
+          success: false,
+          message: 'Invalid or empty dynamicValue array'
+      });
+    }
+
+    const insertData = [];
+
+    // Loop through each group
+    for (const group of dyanmicValue) {
+        const { groupId, groupFields } = group;
+
+        if (!groupId || !groupFields || !Array.isArray(groupFields)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid group structure in dynamicValue'
+            });
+        }
+
+        // Loop through each field in the group
+        for (const field of groupFields) {
+            const { filedID, filedValue } = field;
+
+            insertData.push({
+                groupId: new mongoose.Types.ObjectId(groupId),    // Converting to ObjectId
+                fieldId: new mongoose.Types.ObjectId(filedID),    // Converting to ObjectId
+                value: filedValue,
+                customeId: new mongoose.Types.ObjectId(customerId) // Converting to ObjectId
+            });
+        }
+    }
+
+    // Bulk Insert to MongoDB
+    await FormFieldsValue.insertMany(insertData);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Customer created successfully',
+      // dataCount: insertData.length
+  });
+  } catch (error) {
+    console.error('Error fetching fields list:', error.message);
+
+  res.status(500).json({
+      success: false,
+      message: 'Failed to fetch fields list',
+      error: error.message
+  });
+  }
+}

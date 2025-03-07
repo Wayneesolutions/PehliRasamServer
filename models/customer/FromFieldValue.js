@@ -11,10 +11,6 @@ const formFieldsValueSchema = new mongoose.Schema({
         ref: "FormField",
         required: true
     },
-    // userId: {
-    //     type: mongoose.Schema.Types.ObjectId,
-    //     required: true
-    // },
     value: {
         type: String,
         required: true
