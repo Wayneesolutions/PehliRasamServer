@@ -11,6 +11,7 @@ const Admin = require("../../models/admin/adminModel")
 const { notificationSchema } = require('../../validations/notificationValidation');
 const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
+const getImageUrl = require('../../utils/getImageUrl')
 
 
 
@@ -190,16 +191,17 @@ exports.updateNotification = async (req, res) => {
 exports.updateBasicDetails = async (req, res) => {
   try {
     const { userId } = req.body; // Extract userId from body
-    const authenticatedUserId = req.id; // Extract from token (assuming it's set in middleware)
+    const authenticatedUserId = req.id; // Extract from token (middleware)
 
     // Validate request body
     const { error } = basicDetailsSchema.validate(req.body, { allowUnknown: false });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
-    // Ensure the user can only update their own details
+
+    // Ensure users can only update their own details
     if (userId !== authenticatedUserId.toString()) {
-      return res.status(403).json({ error: "Unauthorized: You can only update your own details" });
+      return res.status(403).json({ error: 'Unauthorized: You can only update your own details' });
     }
 
     // Find the admin
@@ -208,13 +210,21 @@ exports.updateBasicDetails = async (req, res) => {
       return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Prepare update object (excluding userId)
+    // Prepare update object (excluding email & userId)
     const updateObject = {};
-    ['firstName', 'lastName', 'number', 'profilePic'].forEach((key) => {
+    ['firstName', 'lastName', 'number'].forEach((key) => {
       if (req.body[key] !== undefined) updateObject[key] = req.body[key];
     });
 
-    // Update only allowed fields
+    // Handle profile picture upload from S3
+    if (req.file) {
+      // updateObject.profilePic = req.file.location; // S3 URL
+      updateObject.profilePic = getImageUrl(req.file.filename); // S3 URL
+    }
+
+    console.log("::::::", req.file)
+
+    // Update allowed fields
     const updatedAdmin = await Admin.findByIdAndUpdate(
       { _id: userId, isDeleted: false },
       { $set: updateObject },

@@ -50,3 +50,11 @@ Thumbs.db
 *.vscode
 # Sentry Config File
 .sentryclirc
+# Ignore uploaded files
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.pdf
