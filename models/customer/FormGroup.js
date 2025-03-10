@@ -5,6 +5,10 @@ const formGroupSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  isActive: {
+    type: Boolean,
+    default: false
+  }
 }, { timestamps: true });
 
 const FormGroup = mongoose.model("FormGroup", formGroupSchema);

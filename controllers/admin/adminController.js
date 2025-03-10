@@ -1,11 +1,159 @@
 const mongoose = require('mongoose');
 const { validationResult } = require("express-validator");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const FormGroup = require("../../models/customer/FormGroup")
 const FormField = require("../../models/customer/FormField")
 const FormFieldsValue = require("../../models/customer/FromFieldValue")
 const Customer = require("../../models/customer/customerModel")
 const { findMatchingUsers } = require('../../services/matchService');
+const Admin = require("../../models/admin/adminModel")
 
+
+exports.create_admin = async (req, res) => {
+  try {
+
+    const { fistName, lastName, email, password, permissions, tempTime } = req.body;
+
+    const existingAdmin = await Admin.findOne({ email });
+    if (existingAdmin) {
+      return res.status(400).json({ error: "Admin with this email already exists" });
+    }
+
+    // Set default password if not provided
+    const plainPassword = password || "123456789";
+
+    // Encrypt password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+    // Create new admin
+    const admin = new Admin({ 
+      fistName,
+      lastName, 
+      email, 
+      password: hashedPassword, 
+    });
+
+    await admin.save();
+    res.status(201).json({ message: "Admin created successfully", admin });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.login_admin = async (req, res) => {
+  try {
+    // Basic input validation
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // Sanitize email
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    // Check if admin exists
+    const admin = await Admin.findOne({ email: sanitizedEmail });
+    if (!admin) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    // Check if password is correct
+    const isMatch = await bcrypt.compare(password, admin.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    // Check if tempTime has expired (for temporary admins)
+    if (admin.tempTime && new Date(admin.tempTime) < new Date()) {
+      return res.status(403).json({ error: "Admin access expired" });
+    }
+
+    // Update lastLogin field
+    admin.lastLogin = new Date();
+    await admin.save();
+
+    // Generate JWT Token
+    const token = jwt.sign(
+      { id: admin._id, role: admin.role },
+      process.env.JWT_ACCESS_TOKEN, // Use environment variable for secret key
+      { expiresIn: "1h" }
+    );
+
+    // Omit sensitive information from the response
+    const adminResponse = {
+      id: admin._id,
+      email: admin.email,
+      role: admin.role,
+      permissions: admin.permissions,
+      notification: admin.notification,
+      lastLogin: admin.lastLogin,
+      createdAt: admin.createdAt,
+      updatedAt: admin.updatedAt
+    };
+
+    res.status(200).json({ message: "Login successful", token, admin: adminResponse });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.updatePermission = async (req, res) => {
+  try {
+    const {userId, permissions } = req.body;
+
+    // Find the admin
+    const admin = await Admin.findById(userId);
+    if (!admin) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    // Merge existing permissions with new permissions
+    const updatedPermissions = { ...admin.permissions.toObject(), ...permissions };
+
+    // Update the admin's permissions
+    const updatedAdmin = await Admin.findByIdAndUpdate(
+      { _id: userId },
+      { $set: { permissions: updatedPermissions } },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({ message: "Permissions updated successfully", permissions: updatedAdmin.permissions });
+  } catch (error) {
+    console.error('Update permission error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.updateNotification = async (req, res) => {
+  try {
+    const {userId, notification } = req.body;
+
+    // Find the admin
+    const admin = await Admin.findById(userId);
+    if (!admin) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    // Merge existing notifications with new notifications
+    const updatedNotifications = { ...admin.notification.toObject(), ...notification };
+
+    // Update the admin's notifications
+    const updatedAdmin = await Admin.findByIdAndUpdate(
+      { _id: userId },
+      { $set: { notification: updatedNotifications } },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({ message: "Notifications updated successfully", notification: updatedAdmin.notification });
+  } catch (error) {
+    console.error('Update notification error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 exports.form_group = async (req, res) => {
   try {
@@ -343,8 +491,14 @@ exports.addCustomer = async (req, res) =>{
         matchPreferences: {
             preferredGender: statucVlaue[1].matchPreferences?.preferredGender || 'NAN',
             preferredReligion: statucVlaue[1].matchPreferences?.preferredReligion || 'NAN',
-            // preferredAgeRange: statucVlaue[0].matchPreferences?.preferredAgeRange || 'NAN',
-            // preferredHeight: statucVlaue[0].matchPreferences?.preferredHeight || 'NAN',
+            preferredAgeRange: {
+                min: statucVlaue[1].matchPreferences?.preferredAgeRange.min || 'NAN',
+                max: statucVlaue[1].matchPreferences?.preferredAgeRange.max || 'NAN',
+            },
+            preferredHeight: {
+              min: statucVlaue[1].matchPreferences?.preferredHeight.min || 'NAN',
+              max: statucVlaue[1].matchPreferences?.preferredHeight.max || 'NAN'
+            },
             caste: statucVlaue[1].matchPreferences?.caste || 'NAN',
             cityPreferred: statucVlaue[1].matchPreferences?.cityPreferred || 'NAN',
             preferredAppearance: statucVlaue[1].matchPreferences?.preferredAppearance || 'NAN',
@@ -355,7 +509,9 @@ exports.addCustomer = async (req, res) =>{
             drinkAlcohol: statucVlaue[1].matchPreferences?.drinkAlcohol ?? false
         }
     };
-    // console.log("statucVlaue:::::", statucVlaue[1])
+    console.log("staticField:::::", staticField.statucVlaue)
+
+    // return true;
     const existingProfile = await Customer.findOne({ 'personalDetails.email': staticField.personalDetails.email });
 
     if (existingProfile) {
@@ -427,3 +583,151 @@ exports.addCustomer = async (req, res) =>{
   });
   }
 }
+
+exports.updateCustomer = async (req, res) => {
+  try {
+      const { customerId } = req.params;
+      const { statucVlaue, dyanmicValue } = req.body;
+
+      if (!customerId) {
+          return res.status(400).json({
+              success: false,
+              message: 'Customer ID is required'
+          });
+      }
+
+      const customer = await Customer.findById(customerId);
+      if (!customer) {
+          return res.status(404).json({
+              success: false,
+              message: 'Customer not found'
+          });
+      }
+
+      // Update static fields if provided
+      if (statucVlaue && Array.isArray(statucVlaue)) {
+          const personalDetails = statucVlaue.find(item => item.personalDetails)?.personalDetails || {};
+          const matchPreferences = statucVlaue.find(item => item.matchPreferences)?.matchPreferences || {};
+
+          // Merge provided data with existing data (keep existing if not provided)
+          customer.personalDetails.fullName = personalDetails.fullName ?? customer.personalDetails.fullName;
+          customer.personalDetails.email = personalDetails.email ?? customer.personalDetails.email;
+          customer.personalDetails.contactNumber = personalDetails.contactNumber ?? customer.personalDetails.contactNumber;
+          customer.personalDetails.country = personalDetails.country ?? customer.personalDetails.country;
+          customer.personalDetails.location = personalDetails.location ?? customer.personalDetails.location;
+
+          customer.matchPreferences.preferredGender = matchPreferences.preferredGender ?? customer.matchPreferences.preferredGender;
+          customer.matchPreferences.preferredReligion = matchPreferences.preferredReligion ?? customer.matchPreferences.preferredReligion;
+          customer.matchPreferences.preferredAgeRange = {
+              min: matchPreferences.preferredAgeRange?.min ?? customer.matchPreferences.preferredAgeRange.min,
+              max: matchPreferences.preferredAgeRange?.max ?? customer.matchPreferences.preferredAgeRange.max,
+          };
+          customer.matchPreferences.preferredHeight = {
+              min: matchPreferences.preferredHeight?.min ?? customer.matchPreferences.preferredHeight.min,
+              max: matchPreferences.preferredHeight?.max ?? customer.matchPreferences.preferredHeight.max
+          };
+          customer.matchPreferences.caste = matchPreferences.caste ?? customer.matchPreferences.caste;
+          customer.matchPreferences.cityPreferred = matchPreferences.cityPreferred ?? customer.matchPreferences.cityPreferred;
+          customer.matchPreferences.preferredAppearance = matchPreferences.preferredAppearance ?? customer.matchPreferences.preferredAppearance;
+          customer.matchPreferences.maritalStatusPreference = matchPreferences.maritalStatusPreference ?? customer.matchPreferences.maritalStatusPreference;
+          customer.matchPreferences.educationPreference = matchPreferences.educationPreference ?? customer.matchPreferences.educationPreference;
+          customer.matchPreferences.employmentPreference = matchPreferences.employmentPreference ?? customer.matchPreferences.employmentPreference;
+          customer.matchPreferences.vegetarianPreference = matchPreferences.vegetarianPreference ?? customer.matchPreferences.vegetarianPreference;
+          customer.matchPreferences.drinkAlcohol = matchPreferences.drinkAlcohol ?? customer.matchPreferences.drinkAlcohol;
+
+          await customer.save();
+      }
+
+      // Update dynamic fields if provided
+      if (dyanmicValue && Array.isArray(dyanmicValue) && dyanmicValue.length > 0) {
+          // Remove old fields for this customer (optional: if you want to replace all fields)
+          await FormFieldsValue.deleteMany({ customeId: customerId });
+
+          const insertData = [];
+
+          for (const group of dyanmicValue) {
+              const { groupId, groupFields } = group;
+
+              if (!groupId || !groupFields || !Array.isArray(groupFields)) {
+                  return res.status(400).json({
+                      success: false,
+                      message: 'Invalid group structure in dynamicValue'
+                  });
+              }
+
+              for (const field of groupFields) {
+                  const { filedID, filedValue } = field;
+
+                  insertData.push({
+                      groupId: new mongoose.Types.ObjectId(groupId),
+                      fieldId: new mongoose.Types.ObjectId(filedID),
+                      value: filedValue,
+                      customeId: new mongoose.Types.ObjectId(customerId)
+                  });
+              }
+          }
+
+          await FormFieldsValue.insertMany(insertData);
+      }
+
+      res.status(200).json({
+          success: true,
+          message: 'Customer updated successfully',
+          updatedCustomer: customer
+      });
+
+  } catch (error) {
+      console.error('Error updating customer:', error.message);
+      res.status(500).json({
+          success: false,
+          message: 'Failed to update customer',
+          error: error.message
+      });
+  }
+};
+
+exports.reactivateCustomer = async (req, res) => {
+  try {
+      const { customerId } = req.body;
+
+      if (!customerId) {
+          return res.status(400).json({
+              success: false,
+              message: 'Customer ID is required in the request body'
+          });
+      }
+
+      const customer = await Customer.findById(customerId);
+
+      if (!customer) {
+          return res.status(404).json({
+              success: false,
+              message: 'Customer not found'
+          });
+      }
+
+      if (!customer.isDeleted) {
+          return res.status(400).json({
+              success: false,
+              message: 'Customer is already active'
+          });
+      }
+
+      customer.isDeleted = false;
+      await customer.save();
+
+      res.status(200).json({
+          success: true,
+          message: 'Customer reactivated successfully',
+          customer
+      });
+
+  } catch (error) {
+      console.error('Error reactivating customer:', error.message);
+      res.status(500).json({
+          success: false,
+          message: 'Failed to reactivate customer',
+          error: error.message
+      });
+  }
+};

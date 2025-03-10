@@ -10,7 +10,7 @@ const formFieldSchema = new mongoose.Schema({
     enum: ["text", "select", "number", "date", "radio", "checkbox"],
     required: true,
   },
-  attributeState: {
+  attributeStatus: {
     type: Boolean,
     default: true, // Active by default
   },
@@ -30,6 +30,10 @@ const formFieldSchema = new mongoose.Schema({
     ref: "FormGroup",
     required: true,
   },
+  isActive: {
+    type: Boolean,
+    default: false
+  }
 }, { timestamps: true });
 
 const FormField = mongoose.model("FormField", formFieldSchema);
