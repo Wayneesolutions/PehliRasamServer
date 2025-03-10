@@ -8,6 +8,9 @@ const FormFieldsValue = require("../../models/customer/FromFieldValue")
 const Customer = require("../../models/customer/customerModel")
 const { findMatchingUsers } = require('../../services/matchService');
 const Admin = require("../../models/admin/adminModel")
+const { notificationSchema } = require('../../validations/notificationValidation');
+const { permissionSchema } = require('../../validations/permissionValidation');
+
 
 
 exports.create_admin = async (req, res) => {
@@ -55,7 +58,7 @@ exports.login_admin = async (req, res) => {
     const sanitizedEmail = email.trim().toLowerCase();
 
     // Check if admin exists
-    const admin = await Admin.findOne({ email: sanitizedEmail });
+    const admin = await Admin.findOne({ email: sanitizedEmail, isDeleted: false });
     if (!admin) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
@@ -103,55 +106,83 @@ exports.login_admin = async (req, res) => {
 
 exports.updatePermission = async (req, res) => {
   try {
-    const {userId, permissions } = req.body;
+    // Validate request payload
+    const { error } = permissionSchema.validate(req.body, { allowUnknown: false });
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { userId, permissions } = req.body;
 
     // Find the admin
     const admin = await Admin.findById(userId);
     if (!admin) {
-      return res.status(404).json({ error: "Admin not found" });
+      return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Merge existing permissions with new permissions
-    const updatedPermissions = { ...admin.permissions.toObject(), ...permissions };
+    // Generate update object to update only provided keys
+    const updateObject = {};
+    for (const category in permissions) {
+      for (const field in permissions[category]) {
+        updateObject[`permissions.${category}.${field}`] = permissions[category][field];
+      }
+    }
 
-    // Update the admin's permissions
+    // Update only the provided permission keys
     const updatedAdmin = await Admin.findByIdAndUpdate(
-      { _id: userId },
-      { $set: { permissions: updatedPermissions } },
+      { _id: userId, isDeleted: false },
+      { $set: updateObject },
       { new: true, runValidators: true }
     );
 
-    res.status(200).json({ message: "Permissions updated successfully", permissions: updatedAdmin.permissions });
+    res.status(200).json({
+      message: 'Permissions updated successfully',
+      permissions: updatedAdmin.permissions,
+    });
   } catch (error) {
     console.error('Update permission error:', error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
 exports.updateNotification = async (req, res) => {
   try {
-    const {userId, notification } = req.body;
+    // Validate request payload
+    const { error } = notificationSchema.validate(req.body, { allowUnknown: false });
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { userId, notification } = req.body;
 
     // Find the admin
     const admin = await Admin.findById(userId);
     if (!admin) {
-      return res.status(404).json({ error: "Admin not found" });
+      return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Merge existing notifications with new notifications
-    const updatedNotifications = { ...admin.notification.toObject(), ...notification };
+    // Generate update object to update only provided keys
+    const updateObject = {};
+    for (const key in notification) {
+      if (notification.hasOwnProperty(key)) {
+        updateObject[`notification.${key}`] = notification[key];
+      }
+    }
 
-    // Update the admin's notifications
+    // Update only the provided notification keys
     const updatedAdmin = await Admin.findByIdAndUpdate(
-      { _id: userId },
-      { $set: { notification: updatedNotifications } },
+      { _id: userId, isDeleted: false },
+      { $set: updateObject },
       { new: true, runValidators: true }
     );
 
-    res.status(200).json({ message: "Notifications updated successfully", notification: updatedAdmin.notification });
+    res.status(200).json({
+      message: 'Notifications updated successfully',
+      notification: updatedAdmin.notification,
+    });
   } catch (error) {
     console.error('Update notification error:', error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
