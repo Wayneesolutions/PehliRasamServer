@@ -9,14 +9,14 @@ exports.checkAdminToken = async (req, res, next) => {
       token = req?.headers?.authorization?.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_TOKEN);
       let admin = await Admin.findOne({
-        _id: decoded._id,
+        _id: decoded.id,
         isDeleted: false,
       });
       if (admin) {
-        req.photographerId = admin._id;
+        req.id = admin._id;
         req.role = admin.role;
       } else {
-        req.photographerId = null;
+        req.id = null;
         req.role = null;
       }
       next();

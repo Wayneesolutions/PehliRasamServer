@@ -10,6 +10,7 @@ const { findMatchingUsers } = require('../../services/matchService');
 const Admin = require("../../models/admin/adminModel")
 const { notificationSchema } = require('../../validations/notificationValidation');
 const { permissionSchema } = require('../../validations/permissionValidation');
+const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
 
 
 
@@ -182,6 +183,50 @@ exports.updateNotification = async (req, res) => {
     });
   } catch (error) {
     console.error('Update notification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.updateBasicDetails = async (req, res) => {
+  try {
+    const { userId } = req.body; // Extract userId from body
+    const authenticatedUserId = req.id; // Extract from token (assuming it's set in middleware)
+
+    // Validate request body
+    const { error } = basicDetailsSchema.validate(req.body, { allowUnknown: false });
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+    // Ensure the user can only update their own details
+    if (userId !== authenticatedUserId.toString()) {
+      return res.status(403).json({ error: "Unauthorized: You can only update your own details" });
+    }
+
+    // Find the admin
+    const admin = await Admin.findById(userId);
+    if (!admin) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+
+    // Prepare update object (excluding userId)
+    const updateObject = {};
+    ['firstName', 'lastName', 'number', 'profilePic'].forEach((key) => {
+      if (req.body[key] !== undefined) updateObject[key] = req.body[key];
+    });
+
+    // Update only allowed fields
+    const updatedAdmin = await Admin.findByIdAndUpdate(
+      { _id: userId, isDeleted: false },
+      { $set: updateObject },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      message: 'Basic details updated successfully',
+      admin: updatedAdmin,
+    });
+  } catch (error) {
+    console.error('Update basic details error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

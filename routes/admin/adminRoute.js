@@ -10,6 +10,7 @@ const {
   login_admin,
   updatePermission,
   updateNotification,
+  updateBasicDetails,
   form_group,
   form_field,
   form_group_List,
@@ -28,7 +29,7 @@ router.post("/adminCreation", create_admin);
 router.post("/adminLogin", login_admin);
 router.post("/updateAdminPermission", checkAdminToken, updatePermission);
 router.post("/updateAdminNotification", checkAdminToken, updateNotification);
-// router.post("/updateAdminBasic", checkAdminToken, updateBasic);
+router.post("/updateAdminBasicDetails", checkAdminToken, updateBasicDetails);
 
 //
 router.post("/createFromGroup", validateFormGroup, form_group);
