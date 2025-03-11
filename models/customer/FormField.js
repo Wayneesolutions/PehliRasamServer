@@ -25,6 +25,10 @@ const formFieldSchema = new mongoose.Schema({
     label: String,
     value: String,
   }],
+  attributeDesc: [{
+    label: String,
+    value: String,
+  }],
   form_group_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "FormGroup",
@@ -33,6 +37,10 @@ const formFieldSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: false
+  },
+  editedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
   }
 }, { timestamps: true });
 

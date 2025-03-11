@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const {validateFormGroup, validateFormField } = require("../../validations/formValidation");
+// const {validateFormGroup, validateFormField } = require("../../validations/formValidation");
 // const {upload} = require('../../config/awsConfig');
 const multer = require('multer');
 const fs = require('fs');
@@ -16,6 +16,9 @@ const {
   updatePermission,
   updateNotification,
   updateBasicDetails,
+  getAdminDetail,
+  getAdminList,
+  deactiveAdmin,
   form_group,
   form_field,
   form_group_List,
@@ -65,10 +68,13 @@ router.post("/adminLogin", login_admin);
 router.post("/updateAdminPermission", checkAdminToken, updatePermission);
 router.post("/updateAdminNotification", checkAdminToken, updateNotification);
 router.post("/updateAdminBasicDetails", checkAdminToken, upload.single('profilePic'), updateBasicDetails);
+router.post("/adminDetail", checkAdminToken, getAdminDetail);
+router.get("/adminList", checkAdminToken, getAdminList);
+router.post("/deleteAdmin", checkAdminToken, deactiveAdmin);
 
 //
-router.post("/createFromGroup", validateFormGroup, form_group);
-router.post("/createFromField", validateFormField, form_field)
+router.post("/createFromGroup",checkAdminToken, form_group);
+router.post("/createFromField",checkAdminToken, form_field)
 router.get("/clientsAddedToday", getClientsAddedToday)
 router.post("/matchingUsers", getMatchingUsers)
 router.post("/customerProfile", getCustomerProfile)

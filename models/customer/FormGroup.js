@@ -8,6 +8,10 @@ const formGroupSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: false
+  },
+  editedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
   }
 }, { timestamps: true });
 

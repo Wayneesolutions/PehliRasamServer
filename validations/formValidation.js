@@ -1,56 +1,34 @@
-const { body } = require("express-validator");
+const Joi = require("joi");
 
-const validateFormField = [
-  body("attributeName")
-    .trim()
-    .notEmpty()
-    .withMessage("Attribute name is required"),
+const formFieldSchema = Joi.object({
+  attributeName: Joi.string().trim().required().messages({
+    "string.empty": "Attribute name is required",
+  }),
+  attributeType: Joi.string().trim().required().messages({
+    "string.empty": "Attribute type is required",
+  }),
+  attributeState: Joi.string().trim().required().messages({
+    "string.empty": "Attribute state is required",
+  }),
+  attributePlaceHolder: Joi.string().trim().optional().messages({
+    "string.base": "Placeholder must be a string",
+  }),
+  attributeEnum: Joi.array().items(Joi.string()).optional().messages({
+    "array.base": "Attribute Enum must be an array",
+  }),
+  attributeOption: Joi.array().items(Joi.string()).optional().messages({
+    "array.base": "Attribute Option must be an array",
+  }),
+  form_group_id: Joi.string().trim().required().regex(/^[0-9a-fA-F]{24}$/).messages({
+    "string.empty": "Form group ID is required",
+    "string.pattern.base": "Invalid Form Group ID",
+  }),
+});
 
-  body("attributeType")
-    .trim()
-    .notEmpty()
-    .withMessage("Attribute type is required")
-    .isString()
-    .withMessage("Attribute type must be a string"),
+const formGroupSchema = Joi.object({
+  name: Joi.string().trim().required().messages({
+    "string.empty": "Form group name is required",
+  }),
+});
 
-  body("attributeState")
-    .trim()
-    .notEmpty()
-    .withMessage("Attribute state is required")
-    .isString()
-    .withMessage("Attribute state must be a string"),
-
-  body("attributePlaceHolder")
-    .optional()
-    .isString()
-    .withMessage("Placeholder must be a string"),
-
-  body("attributeEnum")
-    .optional()
-    .isArray()
-    .withMessage("Attribute Enum must be an array"),
-
-  body("attributeOption")
-    .optional()
-    .isArray()
-    .withMessage("Attribute Option must be an array"),
-
-  body("form_group_id")
-    .trim()
-    .notEmpty()
-    .withMessage("Form group ID is required")
-    .isMongoId()
-    .withMessage("Invalid Form Group ID"),
-];
-
-const validateFormGroup = [
-  body("name")
-    .trim()
-    .notEmpty()
-    .withMessage("Form group name is required")
-    .isString()
-    .withMessage("Form group name must be a string"),
-];
-
-
-module.exports = { validateFormField, validateFormGroup };
+module.exports = { formFieldSchema, formGroupSchema };

@@ -11,6 +11,7 @@ const Admin = require("../../models/admin/adminModel")
 const { notificationSchema } = require('../../validations/notificationValidation');
 const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
+const { formFieldSchema, formGroupSchema } = require("../../validations/formValidation");
 const getImageUrl = require('../../utils/getImageUrl')
 
 
@@ -241,21 +242,88 @@ exports.updateBasicDetails = async (req, res) => {
   }
 };
 
+exports.getAdminDetail = async (req, res) => {
+  try {
+
+      const { userId } = req.body;
+
+      if (!userId) {
+          return res.status(400).json({ message: "Admin ID is required" });
+      }
+
+      const admin = await Admin.findById({_id: userId, isDeleted: false}).select("-password"); // Exclude password for security
+
+      if (!admin) {
+          return res.status(404).json({ message: "Admin not found" });
+      }
+    
+    res.status(200).json({ message: "Admin Detail", admin: admin });
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.getAdminList = async (req, res) => {
+  try {
+    const admins = await Admin.find({isDeleted: false}).select("-password"); // Exclude passwords for security
+
+    if (!admins.length) {
+        return res.status(404).json({ message: "No admins found" });
+    }
+
+    res.status(200).json({ message: "Admin Detail", admin: admins });
+
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+exports.deactiveAdmin = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ message: "Admin ID is required" });
+        }
+
+        const admin = await Admin.findById({_id: userId});
+
+        if (!admin) {
+            return res.status(404).json({ message: "Admin not found" });
+        }
+
+        // Update admin status to inactive
+        admin.isDeleted = true;
+        await admin.save();
+
+        res.status(200).json({ success: true, message: "Admin deleted successfully", admin });
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 exports.form_group = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    const { error } = formGroupSchema.validate(req.body, { allowUnknown: false });
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
     }
 
     const { name } = req.body;
+    const editedBy = req.id;
 
     const existingGroup = await FormGroup.findOne({ name });
     if (existingGroup) {
       return res.status(400).json({ error: "A form group with this name already exists" });
     }
 
-    const formGroup = new FormGroup({ name });
+    const formGroup = new FormGroup({ name, editedBy });
     await formGroup.save();
     res.status(201).json(formGroup);
   } catch (error) {
