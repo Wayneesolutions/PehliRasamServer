@@ -21,14 +21,16 @@ const formFieldSchema = new mongoose.Schema({
   attributeEnum: [{
     type: String,
   }],
-  attributeOption: [{
-    label: String,
-    value: String,
-  }],
-  attributeDesc: [{
-    label: String,
-    value: String,
-  }],
+  // attributeOption: [{
+  //   label: String,
+  //   value: String,
+  // }],
+  attributeOption: [String],
+
+  // attributeDesc: [{
+  //   label: String,
+  //   value: String,
+  // }],
   form_group_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "FormGroup",
@@ -39,6 +41,14 @@ const formFieldSchema = new mongoose.Schema({
     default: false
   },
   editedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",
   }

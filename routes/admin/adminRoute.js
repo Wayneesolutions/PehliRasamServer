@@ -21,7 +21,14 @@ const {
   deactiveAdmin,
   createFromGroup,
   updateFromGroup,
-  form_field,
+  deleteFromGroup,
+  getFromGroupList,
+  createFromField,
+  updateFormField,
+  changeFormFieldGroup,
+  deleteFormField,
+  allGroupFieldList,
+
   form_group_List,
   getClientSubmissions,
   getRecentlySubmittedClients,
@@ -76,7 +83,19 @@ router.post("/deleteAdmin", checkAdminToken, deactiveAdmin);
 //
 router.post("/createFromGroup",checkAdminToken, createFromGroup);
 router.post("/updateFromGroup",checkAdminToken, updateFromGroup);
-router.post("/createFromField",checkAdminToken, form_field)
+router.post("/deleteFromGroup",checkAdminToken, deleteFromGroup);
+router.get("/allFromGroupList",checkAdminToken, getFromGroupList);
+
+
+router.post("/createFromField",checkAdminToken, createFromField)
+router.post("/updateFormField",checkAdminToken, updateFormField);
+router.post("/changeFormFieldGroup",checkAdminToken, changeFormFieldGroup);
+router.post("/deleteFormField",checkAdminToken, deleteFormField);
+
+
+router.get("/getFromGroupList",checkAdminToken, allGroupFieldList);
+
+
 router.get("/clientsAddedToday", getClientsAddedToday)
 router.post("/matchingUsers", getMatchingUsers)
 router.post("/customerProfile", getCustomerProfile)

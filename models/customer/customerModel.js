@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const customerSchema = new mongoose.Schema({
-    fistName: { type: String, required: true, minlength: 3, maxlength: 50, trim: true },
+    firstName: { type: String, required: true, minlength: 3, maxlength: 50, trim: true },
     lastName: { type: String, required: true, minlength: 3, maxlength: 50, trim: true },
     email: { type: String, required: true, trim: true, match: /\S+@\S+\.\S+/ },
 //    personalDetails: {

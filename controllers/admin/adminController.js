@@ -19,7 +19,7 @@ const getImageUrl = require('../../utils/getImageUrl')
 exports.create_admin = async (req, res) => {
   try {
 
-    const { fistName, lastName, email, password, permissions, tempTime } = req.body;
+    const { firstName, lastName, email, password, permissions, tempTime } = req.body;
 
     const existingAdmin = await Admin.findOne({ email });
     if (existingAdmin) {
@@ -35,7 +35,7 @@ exports.create_admin = async (req, res) => {
 
     // Create new admin
     const admin = new Admin({ 
-      fistName,
+      firstName,
       lastName, 
       email, 
       password: hashedPassword, 
@@ -91,6 +91,8 @@ exports.login_admin = async (req, res) => {
     // Omit sensitive information from the response
     const adminResponse = {
       id: admin._id,
+      firstName: admin.firstName,
+      lastName: admin.lastName,
       email: admin.email,
       role: admin.role,
       permissions: admin.permissions,
@@ -316,14 +318,14 @@ exports.createFromGroup = async (req, res) => {
     }
 
     const { name } = req.body;
-    const editedBy = req.id;
+    const createdBy = req.id;
 
     const existingGroup = await FormGroup.findOne({ name });
     if (existingGroup) {
       return res.status(400).json({ error: "A form group with this name already exists" });
     }
 
-    const formGroup = new FormGroup({ name, editedBy });
+    const formGroup = new FormGroup({ name, createdBy });
     await formGroup.save();
     res.status(201).json(formGroup);
   } catch (error) {
@@ -340,7 +342,7 @@ exports.updateFromGroup = async (req, res) => {
         return res.status(400).json({ message: "FormGroup ID is required" });
     }
 
-    const formGroup = await FormGroup.findById({_id: groupId, isDeleted: false});
+    const formGroup = await FormGroup.findOne({ _id: groupId, isDeleted: false });
 
     if (!formGroup) {
         return res.status(404).json({ message: "FormGroup not found" });
@@ -359,15 +361,60 @@ exports.updateFromGroup = async (req, res) => {
   }
 };
 
-exports.form_field = async (req, res) => {
+exports.deleteFromGroup = async (req, res) => {
+  try {
+    const { groupId } = req.body;
+    const editedBy = req.id;
+
+    if (!groupId) {
+        return res.status(400).json({ message: "FormGroup ID is required" });
+    }
+
+    const formGroup = await FormGroup.findOne({ _id: groupId, isDeleted: false });
+
+
+    if (!formGroup) {
+        return res.status(404).json({ message: "FormGroup not found" });
+    }
+
+    // Update fields if provided
+    // if (typeof isActive === "boolean") formGroup.isActive = isActive;
+    if (editedBy) formGroup.editedBy = editedBy;
+    if (groupId) formGroup.isDeleted = true;
+
+    await formGroup.save();
+
+    res.status(200).json({ success: true, message: "FormGroup updated successfully", formGroup });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getFromGroupList = async (req, res) => {
+  try {
+
+    const formGroup = await FormGroup.find({isDeleted: false});
+
+    if (!formGroup) {
+        return res.status(404).json({ message: "FormGroup not found" });
+    }
+
+    res.status(200).json({ success: true, message: "FormGroup list", formGroup });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.createFromField = async (req, res) => {
 try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-    const { attributeName, attributeType, attributeState, attributePlaceHolder, attributeEnum, attributeOption, form_group_id } = req.body;
+    const createdBy = req.id;
+    const { attributeName, attributeType, attributeStatus, attributePlaceHolder, attributeEnum, attributeOption, form_group_id } = req.body;
 
-    const formGroup = await FormGroup.findById(form_group_id);
+    const formGroup = await FormGroup.findOne({ _id: form_group_id, isDeleted: false });
     if (!formGroup) {
       return res.status(404).json({ error: "Form Group not found" });
     }
@@ -380,11 +427,12 @@ try {
     const formField = new FormField({
     attributeName,
     attributeType,
-    attributeState,
+    attributeStatus,
     attributePlaceHolder,
     attributeEnum,
     attributeOption,
     form_group_id,
+    createdBy
     });
 
     await formField.save();
@@ -393,11 +441,173 @@ try {
 //   formGroup.formFields.push(formField._id);
 //   await formGroup.save();
 
-    res.status(201).json(formField);
+    res.status(201).json({ 
+      message: "Form field created successfully.",
+      formField 
+    });
 } catch (error) {
     res.status(500).json({ error: error.message });
 }
 }
+
+exports.updateFormField = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const editedBy = req.id;
+    const { fieldId, ...updateData } = req.body; // Extract fieldId and remaining fields
+
+    if (!fieldId) {
+      return res.status(400).json({ error: "Field ID is required" });
+    }
+
+    const formField = await FormField.findOne({ _id: fieldId });
+
+    if (!formField) {
+      return res.status(404).json({ error: "Form field not found" });
+    }
+
+    // Update only the provided fields
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] !== undefined) {
+        formField[key] = updateData[key];
+      }
+    });
+
+    formField.editedBy = editedBy;
+
+    await formField.save();
+
+    res.status(200).json({
+      message: "Form field updated successfully.",
+      formField,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.changeFormFieldGroup = async (req, res) => {
+  try {
+
+    const editedBy = req.id;
+    const { fieldId, formGroupId } = req.body; // Only extract fieldId and new group ID
+
+    if (!fieldId || !formGroupId) {
+      return res.status(400).json({ error: "Field ID and new Form Group ID are required" });
+    }
+
+    // Check if the new form group exists and is not deleted
+    const formGroup = await FormGroup.findOne({ _id: formGroupId, isDeleted: false });
+    if (!formGroup) {
+      return res.status(404).json({ error: "Target Form Group not found or deleted" });
+    }
+
+    const formField = await FormField.findOne({ _id: fieldId });
+
+    if (!formField) {
+      return res.status(404).json({ error: "Form field not found" });
+    }
+
+    // Update only the form_group_id
+    formField.form_group_id = formGroupId;
+    formField.editedBy = editedBy;
+
+    await formField.save();
+
+    res.status(200).json({
+      message: "Form field group updated successfully.",
+      formField,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.deleteFormField = async (req, res) => {
+  try {
+    const { fieldId } = req.body; // Get the field ID from request body
+    const editedBy = req.id; // Track who is deleting
+
+    if (!fieldId) {
+      return res.status(400).json({ error: "Field ID is required" });
+    }
+
+    const formField = await FormField.findOne({ _id: fieldId });
+
+    if (!formField) {
+      return res.status(404).json({ error: "Form field not found" });
+    }
+
+    // Mark as deleted instead of removing
+    formField.isDeleted = true;
+    formField.editedBy = editedBy;
+
+    await formField.save();
+
+    res.status(200).json({
+      message: "Form field deleted successfully.",
+      formField,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.allGroupFieldList = async (req, res) => {
+  try {
+    const groupFieldList = await FormField.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "formgroups", // Ensure this matches your actual collection name
+          localField: "form_group_id",
+          foreignField: "_id",
+          as: "formGroup"
+        }
+      },
+      {
+        $unwind: {
+          path: "$formGroup",
+          preserveNullAndEmptyArrays: true // Keep fields even if they have no group
+        }
+      },
+      {
+        $group: {
+          _id: "$form_group_id",
+          groupName: { $first: "$formGroup.name" }, // Get the group name
+          fields: {
+            $push: {
+              attributeId: "$_id",
+              attributeName: "$attributeName",
+              attributeType: "$attributeType",
+              attributeStatus: "$attributeState",
+              attributeEnum: "$attributeEnum",
+              attributeOption: "$attributeOption"
+            }
+          }
+        }
+      },
+      {
+        $sort: { "groupName": 1 } // Sort groups alphabetically
+      }
+    ]);
+
+    res.status(200).json({
+      message: "Form fields grouped by form groups retrieved successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "An error occurred while retrieving form fields.",
+      error: error.message
+    });
+  }
+};
 
 exports.form_group_List = async (req, res) => {
   try {

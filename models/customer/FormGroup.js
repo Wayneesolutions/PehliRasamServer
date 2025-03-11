@@ -12,7 +12,15 @@ const formGroupSchema = new mongoose.Schema({
   editedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",
-  }
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
 }, { timestamps: true });
 
 const FormGroup = mongoose.model("FormGroup", formGroupSchema);
