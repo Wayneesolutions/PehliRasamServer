@@ -189,6 +189,10 @@ const AdminSchema = new mongoose.Schema({
     type: String,
     enum: ["active", "inactive", "suspended"], // Add other statuses as needed
     default: "active"
+  },
+  refreshToken: {
+    type: String,
+    default: null,
   }
 }, { timestamps: true });
 

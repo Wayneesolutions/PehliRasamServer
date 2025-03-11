@@ -85,7 +85,7 @@ exports.login_admin = async (req, res) => {
     const token = jwt.sign(
       { id: admin._id, role: admin.role },
       process.env.JWT_ACCESS_TOKEN, // Use environment variable for secret key
-      { expiresIn: "1h" }
+      { expiresIn: "7d" }
     );
 
     // Omit sensitive information from the response
@@ -308,7 +308,7 @@ exports.deactiveAdmin = async (req, res) => {
   }
 }
 
-exports.form_group = async (req, res) => {
+exports.createFromGroup = async (req, res) => {
   try {
     const { error } = formGroupSchema.validate(req.body, { allowUnknown: false });
     if (error) {
@@ -326,6 +326,34 @@ exports.form_group = async (req, res) => {
     const formGroup = new FormGroup({ name, editedBy });
     await formGroup.save();
     res.status(201).json(formGroup);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.updateFromGroup = async (req, res) => {
+  try {
+    const { groupId, name } = req.body;
+    const editedBy = req.id;
+
+    if (!groupId) {
+        return res.status(400).json({ message: "FormGroup ID is required" });
+    }
+
+    const formGroup = await FormGroup.findById({_id: groupId, isDeleted: false});
+
+    if (!formGroup) {
+        return res.status(404).json({ message: "FormGroup not found" });
+    }
+
+    // Update fields if provided
+    if (name) formGroup.name = name;
+    // if (typeof isActive === "boolean") formGroup.isActive = isActive;
+    if (editedBy) formGroup.editedBy = editedBy;
+
+    await formGroup.save();
+
+    res.status(200).json({ success: true, message: "FormGroup updated successfully", formGroup });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
