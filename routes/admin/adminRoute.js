@@ -29,6 +29,10 @@ const {
   deleteFormField,
   allGroupFieldList,
 
+  addCustomerByAdmin,
+  fetchCustomerFieldGroups,
+  updateCustomerByAdmin,
+
   form_group_List,
   getClientSubmissions,
   getRecentlySubmittedClients,
@@ -37,7 +41,6 @@ const {
   getCustomerProfile,
   getAllFieldsList,
   addCustomer,
-  updateCustomer,
   reactivateCustomer
 } = require('../../controllers/admin/adminController');
 
@@ -91,9 +94,16 @@ router.post("/createFromField",checkAdminToken, createFromField)
 router.post("/updateFormField",checkAdminToken, updateFormField);
 router.post("/changeFormFieldGroup",checkAdminToken, changeFormFieldGroup);
 router.post("/deleteFormField",checkAdminToken, deleteFormField);
+// router.post("/fieldList",checkAdminToken, fieldList);
 
 
 router.get("/getFromGroupList",checkAdminToken, allGroupFieldList);
+
+
+router.post("/addCustomerByAdmin",checkAdminToken, addCustomerByAdmin)
+router.get("/fetchCustomerFieldGroups",checkAdminToken, fetchCustomerFieldGroups)
+// router.post("/updateCustomerByAdmin",checkAdminToken, updateCustomerByAdmin)
+
 
 
 router.get("/clientsAddedToday", getClientsAddedToday)
@@ -101,7 +111,7 @@ router.post("/matchingUsers", getMatchingUsers)
 router.post("/customerProfile", getCustomerProfile)
 router.post("/fromFieldList", getAllFieldsList)
 router.post("/addCustomer", addCustomer)
-router.post("/updateCustomer", updateCustomer)
+// router.post("/updateCustomer", updateCustomer)
 router.post("/deactiveCustomer", reactivateCustomer)
 
 router.route('/getFromGroupList').get(form_group_List);

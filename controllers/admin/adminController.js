@@ -15,7 +15,7 @@ const { formFieldSchema, formGroupSchema } = require("../../validations/formVali
 const getImageUrl = require('../../utils/getImageUrl')
 
 
-
+//Admin related section---
 exports.create_admin = async (req, res) => {
   try {
 
@@ -310,6 +310,7 @@ exports.deactiveAdmin = async (req, res) => {
   }
 }
 
+//Group and fileds section---
 exports.createFromGroup = async (req, res) => {
   try {
     const { error } = formGroupSchema.validate(req.body, { allowUnknown: false });
@@ -558,6 +559,100 @@ exports.deleteFormField = async (req, res) => {
 
 exports.allGroupFieldList = async (req, res) => {
   try {
+    const groupFieldList = await FormGroup.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "formfields", // Ensure this matches your actual collection name
+          localField: "_id",
+          foreignField: "form_group_id",
+          as: "fields"
+        }
+      },
+      {
+        $unwind: {
+          path: "$fields",
+          preserveNullAndEmptyArrays: true // Ensures groups without fields still appear
+        }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          groupName: { $first: "$name" }, // Form group name
+          fields: {
+            $push: {
+              attributeId: "$fields._id",
+              attributeName: "$fields.attributeName",
+              attributeType: "$fields.attributeType",
+              attributeStatus: "$fields.attributeState",
+              attributeEnum: "$fields.attributeEnum",
+              attributeOption: "$fields.attributeOption"
+            }
+          }
+        }
+      },
+      {
+        $sort: { "groupName": 1 } // Sort groups alphabetically
+      }
+    ]);
+
+    res.status(200).json({
+      message: "Form groups with their fields retrieved successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "An error occurred while retrieving form groups and fields.",
+      error: error.message
+    });
+  }
+};
+//customer section--
+exports.addCustomerByAdmin = async (req, res) => {
+  try {
+      const { firstName, lastName, email, activeStatus } = req.body;
+
+      // Ensure req.user.id is available
+      if (!req.id) {
+          return res.status(401).json({ success: false, message: "Unauthorized request." });
+      }
+
+      // Validate required fields
+      if (!firstName || !lastName || !email) {
+          return res.status(400).json({ success: false, message: "All required fields must be provided." });
+      }
+
+      // Check if the email already exists
+      const existingCustomer = await Customer.findOne({ email });
+      if (existingCustomer) {
+          return res.status(400).json({ success: false, message: "Email already exists." });
+      }
+
+      // Create new customer
+      const newCustomer = new Customer({
+          firstName,
+          lastName,
+          email,
+          activeStatus: activeStatus ?? false,
+          createdBy: req.id,
+          // updatedBy: req.user.id
+      });
+
+      // Save to database
+      await newCustomer.save();
+
+      return res.status(201).json({ success: true, message: "Customer created successfully.", data: newCustomer });
+
+  } catch (error) {
+      console.error("Error adding customer:", error);
+      return res.status(500).json({ success: false, message: "Internal Server Error." });
+  }
+};
+
+exports.fetchCustomerFieldGroups = async (req, res) => {
+  try {
     const groupFieldList = await FormField.aggregate([
       {
         $match: { isDeleted: false }
@@ -606,6 +701,108 @@ exports.allGroupFieldList = async (req, res) => {
       message: "An error occurred while retrieving form fields.",
       error: error.message
     });
+  }
+};
+
+exports.updateCustomerByAdmin = async (req, res) => {
+  try {
+      const { customerId } = req.params;
+      const { statucVlaue, dyanmicValue } = req.body;
+
+      if (!customerId) {
+          return res.status(400).json({
+              success: false,
+              message: 'Customer ID is required'
+          });
+      }
+
+      const customer = await Customer.findById(customerId);
+      if (!customer) {
+          return res.status(404).json({
+              success: false,
+              message: 'Customer not found'
+          });
+      }
+
+      // Update static fields if provided
+      if (statucVlaue && Array.isArray(statucVlaue)) {
+          const personalDetails = statucVlaue.find(item => item.personalDetails)?.personalDetails || {};
+          const matchPreferences = statucVlaue.find(item => item.matchPreferences)?.matchPreferences || {};
+
+          // Merge provided data with existing data (keep existing if not provided)
+          customer.personalDetails.fullName = personalDetails.fullName ?? customer.personalDetails.fullName;
+          customer.personalDetails.email = personalDetails.email ?? customer.personalDetails.email;
+          customer.personalDetails.contactNumber = personalDetails.contactNumber ?? customer.personalDetails.contactNumber;
+          customer.personalDetails.country = personalDetails.country ?? customer.personalDetails.country;
+          customer.personalDetails.location = personalDetails.location ?? customer.personalDetails.location;
+
+          customer.matchPreferences.preferredGender = matchPreferences.preferredGender ?? customer.matchPreferences.preferredGender;
+          customer.matchPreferences.preferredReligion = matchPreferences.preferredReligion ?? customer.matchPreferences.preferredReligion;
+          customer.matchPreferences.preferredAgeRange = {
+              min: matchPreferences.preferredAgeRange?.min ?? customer.matchPreferences.preferredAgeRange.min,
+              max: matchPreferences.preferredAgeRange?.max ?? customer.matchPreferences.preferredAgeRange.max,
+          };
+          customer.matchPreferences.preferredHeight = {
+              min: matchPreferences.preferredHeight?.min ?? customer.matchPreferences.preferredHeight.min,
+              max: matchPreferences.preferredHeight?.max ?? customer.matchPreferences.preferredHeight.max
+          };
+          customer.matchPreferences.caste = matchPreferences.caste ?? customer.matchPreferences.caste;
+          customer.matchPreferences.cityPreferred = matchPreferences.cityPreferred ?? customer.matchPreferences.cityPreferred;
+          customer.matchPreferences.preferredAppearance = matchPreferences.preferredAppearance ?? customer.matchPreferences.preferredAppearance;
+          customer.matchPreferences.maritalStatusPreference = matchPreferences.maritalStatusPreference ?? customer.matchPreferences.maritalStatusPreference;
+          customer.matchPreferences.educationPreference = matchPreferences.educationPreference ?? customer.matchPreferences.educationPreference;
+          customer.matchPreferences.employmentPreference = matchPreferences.employmentPreference ?? customer.matchPreferences.employmentPreference;
+          customer.matchPreferences.vegetarianPreference = matchPreferences.vegetarianPreference ?? customer.matchPreferences.vegetarianPreference;
+          customer.matchPreferences.drinkAlcohol = matchPreferences.drinkAlcohol ?? customer.matchPreferences.drinkAlcohol;
+
+          await customer.save();
+      }
+
+      // Update dynamic fields if provided
+      if (dyanmicValue && Array.isArray(dyanmicValue) && dyanmicValue.length > 0) {
+          // Remove old fields for this customer (optional: if you want to replace all fields)
+          await FormFieldsValue.deleteMany({ customeId: customerId });
+
+          const insertData = [];
+
+          for (const group of dyanmicValue) {
+              const { groupId, groupFields } = group;
+
+              if (!groupId || !groupFields || !Array.isArray(groupFields)) {
+                  return res.status(400).json({
+                      success: false,
+                      message: 'Invalid group structure in dynamicValue'
+                  });
+              }
+
+              for (const field of groupFields) {
+                  const { filedID, filedValue } = field;
+
+                  insertData.push({
+                      groupId: new mongoose.Types.ObjectId(groupId),
+                      fieldId: new mongoose.Types.ObjectId(filedID),
+                      value: filedValue,
+                      customeId: new mongoose.Types.ObjectId(customerId)
+                  });
+              }
+          }
+
+          await FormFieldsValue.insertMany(insertData);
+      }
+
+      res.status(200).json({
+          success: true,
+          message: 'Customer updated successfully',
+          updatedCustomer: customer
+      });
+
+  } catch (error) {
+      console.error('Error updating customer:', error.message);
+      res.status(500).json({
+          success: false,
+          message: 'Failed to update customer',
+          error: error.message
+      });
   }
 };
 
@@ -975,108 +1172,6 @@ exports.addCustomer = async (req, res) =>{
   });
   }
 }
-
-exports.updateCustomer = async (req, res) => {
-  try {
-      const { customerId } = req.params;
-      const { statucVlaue, dyanmicValue } = req.body;
-
-      if (!customerId) {
-          return res.status(400).json({
-              success: false,
-              message: 'Customer ID is required'
-          });
-      }
-
-      const customer = await Customer.findById(customerId);
-      if (!customer) {
-          return res.status(404).json({
-              success: false,
-              message: 'Customer not found'
-          });
-      }
-
-      // Update static fields if provided
-      if (statucVlaue && Array.isArray(statucVlaue)) {
-          const personalDetails = statucVlaue.find(item => item.personalDetails)?.personalDetails || {};
-          const matchPreferences = statucVlaue.find(item => item.matchPreferences)?.matchPreferences || {};
-
-          // Merge provided data with existing data (keep existing if not provided)
-          customer.personalDetails.fullName = personalDetails.fullName ?? customer.personalDetails.fullName;
-          customer.personalDetails.email = personalDetails.email ?? customer.personalDetails.email;
-          customer.personalDetails.contactNumber = personalDetails.contactNumber ?? customer.personalDetails.contactNumber;
-          customer.personalDetails.country = personalDetails.country ?? customer.personalDetails.country;
-          customer.personalDetails.location = personalDetails.location ?? customer.personalDetails.location;
-
-          customer.matchPreferences.preferredGender = matchPreferences.preferredGender ?? customer.matchPreferences.preferredGender;
-          customer.matchPreferences.preferredReligion = matchPreferences.preferredReligion ?? customer.matchPreferences.preferredReligion;
-          customer.matchPreferences.preferredAgeRange = {
-              min: matchPreferences.preferredAgeRange?.min ?? customer.matchPreferences.preferredAgeRange.min,
-              max: matchPreferences.preferredAgeRange?.max ?? customer.matchPreferences.preferredAgeRange.max,
-          };
-          customer.matchPreferences.preferredHeight = {
-              min: matchPreferences.preferredHeight?.min ?? customer.matchPreferences.preferredHeight.min,
-              max: matchPreferences.preferredHeight?.max ?? customer.matchPreferences.preferredHeight.max
-          };
-          customer.matchPreferences.caste = matchPreferences.caste ?? customer.matchPreferences.caste;
-          customer.matchPreferences.cityPreferred = matchPreferences.cityPreferred ?? customer.matchPreferences.cityPreferred;
-          customer.matchPreferences.preferredAppearance = matchPreferences.preferredAppearance ?? customer.matchPreferences.preferredAppearance;
-          customer.matchPreferences.maritalStatusPreference = matchPreferences.maritalStatusPreference ?? customer.matchPreferences.maritalStatusPreference;
-          customer.matchPreferences.educationPreference = matchPreferences.educationPreference ?? customer.matchPreferences.educationPreference;
-          customer.matchPreferences.employmentPreference = matchPreferences.employmentPreference ?? customer.matchPreferences.employmentPreference;
-          customer.matchPreferences.vegetarianPreference = matchPreferences.vegetarianPreference ?? customer.matchPreferences.vegetarianPreference;
-          customer.matchPreferences.drinkAlcohol = matchPreferences.drinkAlcohol ?? customer.matchPreferences.drinkAlcohol;
-
-          await customer.save();
-      }
-
-      // Update dynamic fields if provided
-      if (dyanmicValue && Array.isArray(dyanmicValue) && dyanmicValue.length > 0) {
-          // Remove old fields for this customer (optional: if you want to replace all fields)
-          await FormFieldsValue.deleteMany({ customeId: customerId });
-
-          const insertData = [];
-
-          for (const group of dyanmicValue) {
-              const { groupId, groupFields } = group;
-
-              if (!groupId || !groupFields || !Array.isArray(groupFields)) {
-                  return res.status(400).json({
-                      success: false,
-                      message: 'Invalid group structure in dynamicValue'
-                  });
-              }
-
-              for (const field of groupFields) {
-                  const { filedID, filedValue } = field;
-
-                  insertData.push({
-                      groupId: new mongoose.Types.ObjectId(groupId),
-                      fieldId: new mongoose.Types.ObjectId(filedID),
-                      value: filedValue,
-                      customeId: new mongoose.Types.ObjectId(customerId)
-                  });
-              }
-          }
-
-          await FormFieldsValue.insertMany(insertData);
-      }
-
-      res.status(200).json({
-          success: true,
-          message: 'Customer updated successfully',
-          updatedCustomer: customer
-      });
-
-  } catch (error) {
-      console.error('Error updating customer:', error.message);
-      res.status(500).json({
-          success: false,
-          message: 'Failed to update customer',
-          error: error.message
-      });
-  }
-};
 
 exports.reactivateCustomer = async (req, res) => {
   try {
