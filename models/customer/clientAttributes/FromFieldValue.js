@@ -15,7 +15,7 @@ const formFieldsValueSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    customeId: {
+    customerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Customer",
         required: true

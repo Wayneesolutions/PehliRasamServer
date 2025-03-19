@@ -8,6 +8,12 @@ const customerSchema = new mongoose.Schema({
         maxlength: 50, 
         trim: true 
     },
+    middelName: { 
+        type: String, 
+        minlength: 3, 
+        maxlength: 50, 
+        trim: true 
+    },
     lastName: { 
         type: String, 
         required: true, 
@@ -30,6 +36,22 @@ const customerSchema = new mongoose.Schema({
         type: String, 
         trim: true, 
         default: null // Store the image URL or file path
+    },
+    address: { 
+        street: { type: String, trim: true, default: null },  // Street address, including unit/apartment number
+        city: { type: String, trim: true, default: null },  // City/Town
+        stateOrProvince: { type: String, trim: true, default: null },  // State, province, or region
+        country: { 
+            type: String, 
+            trim: true, 
+            required: true, 
+            match: [/^[A-Z]{2,3}$/, "Invalid country code"]  // ISO 3166-1 alpha-2 (US, IN) or alpha-3 (USA, IND)
+        },
+        postalCode: { 
+            type: String, 
+            trim: true, 
+            default: null 
+        }
     },
     isDeleted: { 
         type: Boolean, 

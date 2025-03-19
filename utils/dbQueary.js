@@ -1,6 +1,6 @@
-const FormGroup = require('../models/customer/FormGroup');   // Adjust path as per your project
-const FormField = require('../models/customer/FormField');   // Adjust path as per your project
-const FormFieldValue = require('../models/customer/FromFieldValue');
+const FormGroup = require('../models/customer/clientAttributes/FormGroup');   // Adjust path as per your project
+const FormField = require('../models/customer/clientAttributes/FormField');   // Adjust path as per your project
+const FormFieldValue = require('../models/customer/clientAttributes/FromFieldValue');
 
 async function getGroupedAttributes(payloadData) {
     const groups = await FormGroup.aggregate([

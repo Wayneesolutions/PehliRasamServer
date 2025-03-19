@@ -1,6 +1,6 @@
 const Customer = require('../../models/customer/customerModel');
-const FormField = require('../../models/customer/FormField')
-const FormGroup = require('../../models/customer/FormGroup');
+const FormField = require('../../models/customer/clientAttributes/FormField');
+const FormGroup = require('../../models/customer/clientAttributes/FormGroup');
 const {getGroupedAttributes, saveUserData} = require('../../utils/dbQueary')
 
 const ErrorHandler = require('../../utils/errorHandler');

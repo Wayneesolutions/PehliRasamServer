@@ -2,17 +2,25 @@ const mongoose = require('mongoose');
 const { validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const FormGroup = require("../../models/customer/FormGroup")
-const FormField = require("../../models/customer/FormField")
-const FormFieldsValue = require("../../models/customer/FromFieldValue")
+const path = require("path");
+const FormGroup = require("../../models/customer/clientAttributes/FormGroup")
+const FormField = require("../../models/customer/clientAttributes/FormField")
+const FormFieldsValue = require("../../models/customer/clientAttributes/FromFieldValue")
 const Customer = require("../../models/customer/customerModel")
 const { findMatchingUsers } = require('../../services/matchService');
 const Admin = require("../../models/admin/adminModel")
+const ClientList = require("../../models/customer/clientList");
 const { notificationSchema } = require('../../validations/notificationValidation');
 const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
 const { formFieldSchema, formGroupSchema } = require("../../validations/formValidation");
-const getImageUrl = require('../../utils/getImageUrl')
+const { updateCustomerSchema } = require("../../validations/customerValidation");
+const getImageUrl = require('../../utils/getImageUrl');
+const PreferencesGroup = require("../../models/customer/preferencesAttributes/preferencesGroup");
+const PreferencesFields = require("../../models/customer/preferencesAttributes/preferencesFields");
+const PreferencesFieldsValue = require("../../models/customer/preferencesAttributes/preferencesFieldsValue");
+const { preferencesGroupSchema, preferencesFieldSchema, updatePreferencesFieldSchema } = require("../../validations/preferencesValidation");
+
 
 
 //Admin related section---
@@ -609,6 +617,35 @@ exports.allGroupFieldList = async (req, res) => {
     });
   }
 };
+
+//upload File
+
+exports.uploadFile = async (req, res) => {
+  try {
+      if (!req.file) {
+          return res.status(400).json({ success: false, message: "No file uploaded" });
+      }
+
+      const isProduction = process.env.NODE_ENV === "production";
+
+      // Generate file URL
+      let fileUrl = isProduction ? req.file.location : `${req.protocol}://${req.get("host")}/uploads/images/${req.file.filename}`;
+
+      res.status(200).json({
+          success: true,
+          message: "File uploaded successfully",
+          fileUrl: fileUrl
+      });
+
+  } catch (error) {
+      console.error("Upload Error:", error);
+      res.status(500).json({
+          success: false,
+          message: "Failed to upload file",
+          error: error.message
+      });
+  }
+};
 //customer section--
 exports.addCustomerByAdmin = async (req, res) => {
   try {
@@ -704,10 +741,115 @@ exports.fetchCustomerFieldGroups = async (req, res) => {
   }
 };
 
-exports.updateCustomerByAdmin = async (req, res) => {
+exports.fetchPreferencesFieldGroups = async (req, res) => {
   try {
-      const { customerId } = req.params;
-      const { statucVlaue, dyanmicValue } = req.body;
+    const groupFieldList = await PreferencesFields.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "preferencesgroups",
+          localField: "preferencesGroupId",
+          foreignField: "_id",
+          as: "preferencesGroup"
+        }
+      },
+      {
+        $unwind: {
+          path: "$preferencesGroup",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $group: {
+          _id: "$preferencesGroupId",
+          groupName: { $first: "$preferencesGroup.name" },
+          fields: {
+            $push: {
+              fieldId: "$_id",
+              label: "$label",
+              profileField: "$profileField",
+              clientTypes: "$clientTypes",
+              weight: "$weight",
+              useInMatch: "$useInMatch",
+              choices: "$choices",
+              helpText: "$helpText",
+              dealBreak: "$dealBreak",
+              isActive: "$isActive"
+            }
+          }
+        }
+      },
+      {
+        $sort: { groupName: 1 }
+      }
+    ]);
+
+    res.status(200).json({
+      message: "Preferences fields grouped by preferences groups retrieved successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "An error occurred while retrieving preferences fields.",
+      error: error.message
+    });
+  }
+};
+
+exports.updateCustomerBasicDetail = async (req, res) => {
+  try {
+      // Validate request body
+      const { error } = updateCustomerSchema.validate(req.body, { allowUnknown: false });
+      if (error) {
+        console.log(":::::::::")
+          return res.status(400).json({ success: false, message: error.details[0].message });
+      }
+
+      const { customerId, ...updateData } = req.body;
+
+      console.log("customerId:::::", customerId)
+
+      if (!customerId) {
+          return res.status(400).json({ success: false, message: "Customer ID is required" });
+      }
+
+      // Check if the email already exists (excluding the current customer)
+      if (updateData.email) {
+          const existingCustomer = await Customer.findOne({
+              email: updateData.email,
+              _id: { $ne: customerId }
+          });
+
+          if (existingCustomer) {
+              return res.status(400).json({ success: false, message: "Email already exists" });
+          }
+      }
+
+      // Find customer and update
+      const customer = await Customer.findOneAndUpdate(
+          { _id: customerId, isDeleted: false }, 
+          { $set: updateData }, 
+          { new: true, runValidators: true }
+      );
+
+      if (!customer) {
+          return res.status(404).json({ success: false, message: "Customer not found" });
+      }
+
+      res.status(200).json({ success: true, message: "Customer updated successfully", customer });
+
+  } catch (error) {
+      console.error("Error updating customer:", error.message);
+      res.status(500).json({ success: false, message: "Failed to update customer", error: error.message });
+  }
+};
+
+exports.updateCustomerProfile = async (req, res) => {
+  try {
+      const updatedBy = req.id;
+      const { customerId, profileValue } = req.body;
 
       if (!customerId) {
           return res.status(400).json({
@@ -716,73 +858,35 @@ exports.updateCustomerByAdmin = async (req, res) => {
           });
       }
 
-      const customer = await Customer.findById(customerId);
+      const customer = await Customer.findOne({ _id: customerId, isDeleted: false });
+
       if (!customer) {
           return res.status(404).json({
               success: false,
-              message: 'Customer not found'
+              message: 'Customer not found or has been deleted'
           });
       }
 
-      // Update static fields if provided
-      if (statucVlaue && Array.isArray(statucVlaue)) {
-          const personalDetails = statucVlaue.find(item => item.personalDetails)?.personalDetails || {};
-          const matchPreferences = statucVlaue.find(item => item.matchPreferences)?.matchPreferences || {};
-
-          // Merge provided data with existing data (keep existing if not provided)
-          customer.personalDetails.fullName = personalDetails.fullName ?? customer.personalDetails.fullName;
-          customer.personalDetails.email = personalDetails.email ?? customer.personalDetails.email;
-          customer.personalDetails.contactNumber = personalDetails.contactNumber ?? customer.personalDetails.contactNumber;
-          customer.personalDetails.country = personalDetails.country ?? customer.personalDetails.country;
-          customer.personalDetails.location = personalDetails.location ?? customer.personalDetails.location;
-
-          customer.matchPreferences.preferredGender = matchPreferences.preferredGender ?? customer.matchPreferences.preferredGender;
-          customer.matchPreferences.preferredReligion = matchPreferences.preferredReligion ?? customer.matchPreferences.preferredReligion;
-          customer.matchPreferences.preferredAgeRange = {
-              min: matchPreferences.preferredAgeRange?.min ?? customer.matchPreferences.preferredAgeRange.min,
-              max: matchPreferences.preferredAgeRange?.max ?? customer.matchPreferences.preferredAgeRange.max,
-          };
-          customer.matchPreferences.preferredHeight = {
-              min: matchPreferences.preferredHeight?.min ?? customer.matchPreferences.preferredHeight.min,
-              max: matchPreferences.preferredHeight?.max ?? customer.matchPreferences.preferredHeight.max
-          };
-          customer.matchPreferences.caste = matchPreferences.caste ?? customer.matchPreferences.caste;
-          customer.matchPreferences.cityPreferred = matchPreferences.cityPreferred ?? customer.matchPreferences.cityPreferred;
-          customer.matchPreferences.preferredAppearance = matchPreferences.preferredAppearance ?? customer.matchPreferences.preferredAppearance;
-          customer.matchPreferences.maritalStatusPreference = matchPreferences.maritalStatusPreference ?? customer.matchPreferences.maritalStatusPreference;
-          customer.matchPreferences.educationPreference = matchPreferences.educationPreference ?? customer.matchPreferences.educationPreference;
-          customer.matchPreferences.employmentPreference = matchPreferences.employmentPreference ?? customer.matchPreferences.employmentPreference;
-          customer.matchPreferences.vegetarianPreference = matchPreferences.vegetarianPreference ?? customer.matchPreferences.vegetarianPreference;
-          customer.matchPreferences.drinkAlcohol = matchPreferences.drinkAlcohol ?? customer.matchPreferences.drinkAlcohol;
-
-          await customer.save();
-      }
-
-      // Update dynamic fields if provided
-      if (dyanmicValue && Array.isArray(dyanmicValue) && dyanmicValue.length > 0) {
-          // Remove old fields for this customer (optional: if you want to replace all fields)
-          await FormFieldsValue.deleteMany({ customeId: customerId });
+      if (profileValue && Array.isArray(profileValue) && profileValue.length > 0) {
+          await FormFieldsValue.deleteMany({ customerId });
 
           const insertData = [];
-
-          for (const group of dyanmicValue) {
-              const { groupId, groupFields } = group;
-
-              if (!groupId || !groupFields || !Array.isArray(groupFields)) {
+          for (const group of profileValue) {
+              const { preferencesGroupId, groupFields } = group;
+              if (!preferencesGroupId || !groupFields || !Array.isArray(groupFields)) {
                   return res.status(400).json({
                       success: false,
-                      message: 'Invalid group structure in dynamicValue'
+                      message: 'Invalid group structure in profileValue'
                   });
               }
 
               for (const field of groupFields) {
-                  const { filedID, filedValue } = field;
-
+                  const { fieldId, fieldValue } = field;
                   insertData.push({
-                      groupId: new mongoose.Types.ObjectId(groupId),
-                      fieldId: new mongoose.Types.ObjectId(filedID),
-                      value: filedValue,
-                      customeId: new mongoose.Types.ObjectId(customerId)
+                      preferencesGroupId: new mongoose.Types.ObjectId(preferencesGroupId),
+                      fieldId: new mongoose.Types.ObjectId(fieldId),
+                      value: fieldValue,
+                      customerId: new mongoose.Types.ObjectId(customerId)
                   });
               }
           }
@@ -792,12 +896,11 @@ exports.updateCustomerByAdmin = async (req, res) => {
 
       res.status(200).json({
           success: true,
-          message: 'Customer updated successfully',
+          message: 'Customer Profile updated successfully',
           updatedCustomer: customer
       });
 
   } catch (error) {
-      console.error('Error updating customer:', error.message);
       res.status(500).json({
           success: false,
           message: 'Failed to update customer',
@@ -805,6 +908,679 @@ exports.updateCustomerByAdmin = async (req, res) => {
       });
   }
 };
+
+exports.updateCustomerMatchPreferences = async (req, res) => {
+  try {
+      const updatedBy = req.id;
+      const { customerId, matchPreferences } = req.body;
+
+      if (!customerId) {
+          return res.status(400).json({
+              success: false,
+              message: 'Customer ID is required'
+          });
+      }
+
+      const customer = await Customer.findOne({ _id: customerId, isDeleted: false });
+
+      if (!customer) {
+          return res.status(404).json({
+              success: false,
+              message: 'Customer not found or has been deleted'
+          });
+      }
+
+      if (matchPreferences && Array.isArray(matchPreferences) && matchPreferences.length > 0) {
+          await PreferencesFieldsValue.deleteMany({ customerId });
+
+          const insertData = [];
+          for (const group of matchPreferences) {
+              const { preferencesGroupId, groupFields } = group;
+              if (!preferencesGroupId || !groupFields || !Array.isArray(groupFields)) {
+                  return res.status(400).json({
+                      success: false,
+                      message: 'Invalid group structure in matchPreferences'
+                  });
+              }
+
+              for (const field of groupFields) {
+                  const { fieldId, fieldValue } = field;
+                  insertData.push({
+                      preferencesGroupId: new mongoose.Types.ObjectId(preferencesGroupId),
+                      preferencesFieldId: new mongoose.Types.ObjectId(fieldId),
+                      value: fieldValue,
+                      customerId: new mongoose.Types.ObjectId(customerId),
+                      updatedBy: new mongoose.Types.ObjectId(updatedBy)
+                  });
+              }
+          }
+
+          await PreferencesFieldsValue.insertMany(insertData);
+      }
+
+      res.status(200).json({
+          success: true,
+          message: 'Customer profile updated successfully',
+          updatedCustomer: customer
+      });
+
+  } catch (error) {
+      res.status(500).json({
+          success: false,
+          message: 'Failed to update customer profile',
+          error: error.message
+      });
+  }
+};
+
+exports.reactivateCustomer = async (req, res) => {
+  try {
+      const { customerId } = req.body;
+      const updatedBy = req.id; // Get `updatedBy` from `req.id`
+
+      // Check if customerId is provided
+      if (!customerId) {
+          return res.status(400).json({
+              success: false,
+              message: "Customer ID is required"
+          });
+      }
+
+      // Find and reactivate the customer in a single step
+      const customer = await Customer.findOneAndUpdate(
+          { _id: customerId, isDeleted: false }, // Find only if `isDeleted: true`
+          { 
+              isDeleted: true,
+              updatedBy: updatedBy // Update `updatedBy` from `req.id`
+          },
+          { new: true } // Return updated document
+      );
+
+      // If customer not found or already active
+      if (!customer) {
+          return res.status(404).json({
+              success: false,
+              message: "Customer not found or already active"
+          });
+      }
+
+      res.status(200).json({
+          success: true,
+          message: "Customer reactivated successfully",
+          customer
+      });
+
+  } catch (error) {
+      console.error("Error reactivating customer:", error.message);
+      res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+          error: error.message
+      });
+  }
+};
+
+exports.getCustomerProfile = async (req, res) => {
+  try {
+      const { customerId } = req.body;
+
+      // Validate customerId
+      if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
+          return res.status(400).json({
+              success: false,
+              message: "Invalid or missing Customer ID"
+          });
+      }
+
+      const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+      const customer = await Customer.aggregate([
+          { $match: { _id: customerObjectId } },
+          {
+              $lookup: {
+                  from: "formfieldsvalues",
+                  localField: "_id",
+                  foreignField: "customerId",
+                  as: "formFields"
+              }
+          },
+          {
+              $lookup: {
+                  from: "formgroups",
+                  localField: "formFields.groupId",
+                  foreignField: "_id",
+                  as: "groups"
+              }
+          },
+          {
+              $lookup: {
+                  from: "formfields",
+                  localField: "formFields.fieldId",
+                  foreignField: "_id",
+                  as: "fields"
+              }
+          },
+          {
+              $project: {
+                  firstName: 1,
+                  middleName: 1,
+                  lastName: 1,
+                  email: 1,
+                  activeStatus: 1,
+                  imagePath: 1,
+                  address: 1,
+                  dynamicFields: {
+                      $map: {
+                          input: "$groups",
+                          as: "group",
+                          in: {
+                              groupId: "$$group._id",
+                              groupName: "$$group.name",
+                              fields: {
+                                  $map: {
+                                      input: {
+                                          $filter: {
+                                              input: "$formFields",
+                                              as: "ff",
+                                              cond: { $eq: ["$$ff.groupId", "$$group._id"] }
+                                          }
+                                      },
+                                      as: "ff",
+                                      in: {
+                                          fieldId: "$$ff.fieldId",
+                                          fieldName: {
+                                              $arrayElemAt: [
+                                                  {
+                                                      $filter: {
+                                                          input: "$fields",
+                                                          as: "field",
+                                                          cond: { $eq: ["$$field._id", "$$ff.fieldId"] }
+                                                      }
+                                                  },
+                                                  0
+                                              ]
+                                          },
+                                          value: "$$ff.value"
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      ]);
+
+      if (!customer || customer.length === 0) {
+          return res.status(404).json({
+              success: false,
+              message: "Customer not found"
+          });
+      }
+
+      res.status(200).json({
+          success: true,
+          message: "Customer profile retrieved successfully",
+          data: customer[0]
+      });
+
+  } catch (error) {
+      console.error("Error fetching customer profile:", error);
+      res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+          error: error.message
+      });
+  }
+};
+
+exports.createClientList = async (req, res) => {
+  try {
+    const { listName, color } = req.body;
+    const createdBy = req.id;
+
+    if (!listName || !color) {
+      return res.status(400).json({ success: false, message: "List name and color are required" });
+    }
+
+    const newClientList = new ClientList({ listName, color, createdBy });
+    await newClientList.save();
+
+    res.status(201).json({ success: true, message: "Client List added!", data: newClientList });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error adding client list", error });
+  }
+};
+
+exports.editClientList = async (req, res) => {
+  try {
+    const { id, listName, color, status } = req.body;
+    const updatedBy = req.id; // Get user ID from request
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Client List ID is required" });
+    }
+
+    const updatedClientList = await ClientList.findByIdAndUpdate(
+      id,
+      { listName, color, status, updatedBy },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedClientList) {
+      return res.status(404).json({ success: false, message: "Client List not found" });
+    }
+
+    res.json({ success: true, message: "Client List updated!", data: updatedClientList });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error updating client list", error });
+  }
+};
+
+exports.removeClientList = async (req, res) => {
+  try {
+    const { id } = req.body;
+    const updatedBy = req.id; // Get user ID from request
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Client List ID is required" });
+    }
+
+    const deletedClientList = await ClientList.findByIdAndUpdate(
+      id,
+      { isDeleted: true, updatedBy },
+      { new: true }
+    );
+
+    if (!deletedClientList) {
+      return res.status(404).json({ success: false, message: "Client List not found" });
+    }
+
+    res.json({ success: true, message: "Client List deleted!", data: deletedClientList });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error deleting client list", error });
+  }
+};
+
+exports.createPreferencesGroup = async (req, res) => {
+  const { error } = preferencesGroupSchema.validate(req.body, { allowUnknown: false });
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  try {
+    const adminId = req.id; // Extract admin/user ID from request
+
+    // Check if a group with the same name already exists (excluding deleted ones)
+    const existingGroup = await PreferencesGroup.findOne({ name: req.body.name, isDeleted: false });
+
+    if (existingGroup) {
+      return res.status(400).json({ message: "A preferences group with this name already exists" });
+    }
+
+    const newGroup = new PreferencesGroup({
+      ...req.body,
+      createdBy: adminId, // Track who created it
+      // isDeleted: false,   // Ensure it's active
+    });
+
+    await newGroup.save();
+
+    res.status(201).json({ 
+      message: "Preferences group created successfully", 
+      data: newGroup 
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      message: "Error creating preferences group", 
+      error: err.message 
+    });
+  }
+};
+
+exports.updatePreferencesGroup = async (req, res) => {
+  try {
+    const { groupId, name } = req.body;
+    const adminId = req.id; // Extract admin ID from request
+
+    if (!groupId || !name) {
+      return res.status(400).json({ message: "Group ID and Name are required" });
+    }
+
+    // Check if the group exists
+    const existingGroup = await PreferencesGroup.findById(groupId);
+    if (!existingGroup) {
+      return res.status(404).json({ message: "Preferences group not found" });
+    }
+
+    if (existingGroup.isDeleted) {
+      return res.status(400).json({ message: "Cannot update a deleted preferences group" });
+    }
+
+    // Check for duplicate name in active groups
+    const duplicateGroup = await PreferencesGroup.findOne({
+      name: name.trim(),
+      _id: { $ne: groupId }, // Exclude the current group
+      isDeleted: false,
+    });
+
+    if (duplicateGroup) {
+      return res.status(400).json({ message: "A preferences group with this name already exists" });
+    }
+
+    // Update the preferences group
+    const updatedGroup = await PreferencesGroup.findByIdAndUpdate(
+      groupId,
+      { name: name.trim(), editedBy: adminId },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      message: "Preferences group updated successfully",
+      data: updatedGroup,
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      message: "Error updating preferences group",
+      error: err.message,
+    });
+  }
+};
+
+exports.deletePreferencesGroup = async (req, res) => {
+  try {
+    const { groupId } = req.body;
+    const adminId = req.id;
+
+    if (!groupId) {
+      return res.status(400).json({ message: "Group ID is required" });
+    }
+
+    const existingGroup = await PreferencesGroup.findById(groupId);
+
+    if (!existingGroup) {
+      return res.status(404).json({ message: "Preferences group not found" });
+    }
+
+    if (existingGroup.isDeleted) {
+      return res.status(400).json({ message: "Preferences group is already deleted" });
+    }
+
+    existingGroup.isDeleted = true;
+    existingGroup.editedBy = adminId;
+    await existingGroup.save();
+
+    return res.status(200).json({ 
+      message: "Preferences group deleted successfully", 
+      data: existingGroup 
+    });
+
+  } catch (err) {
+    return res.status(500).json({ 
+      message: "Error deleting preferences group", 
+      error: err.message 
+    });
+  }
+};
+
+exports.getPreferencesGroupList = async (req, res) => {
+  try {
+    const groups = await PreferencesGroup.find({ isDeleted: false }).select("_id name");
+
+    res.status(200).json({ 
+      message: "Preferences groups fetched successfully", 
+      data: groups 
+    });
+
+  } catch (err) {
+    res.status(500).json({ 
+      message: "Error fetching preferences groups", 
+      error: err.message 
+    });
+  }
+};
+
+exports.createPreferencesField = async (req, res) => {
+  try {
+    const { error } = preferencesFieldSchema.validate(req.body, { allowUnknown: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { label, profileField, clientTypes, weight, useInMatch, choices, helpText, dealBreak, preferencesGroupId } = req.body;
+    const adminId = req.id;
+
+    const existingGroup = await PreferencesGroup.findById(preferencesGroupId);
+    if (!existingGroup || existingGroup.isDeleted) {
+      return res.status(400).json({ message: "Preferences group does not exist or has been deleted" });
+    }
+
+    const existingField = await PreferencesFields.findOne({ label, preferencesGroupId, isDeleted: false });
+    if (existingField) {
+      return res.status(400).json({ message: "A field with this label already exists in the group" });
+    }
+
+    const newField = new PreferencesFields({
+      label,
+      profileField,
+      clientTypes,
+      weight,
+      useInMatch,
+      choices,
+      helpText,
+      dealBreak,
+      preferencesGroupId,
+      createdBy: adminId,
+    });
+
+    await newField.save();
+
+    res.status(201).json({
+      message: "Preferences field created successfully",
+      data: newField,
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      message: "Error creating preferences field",
+      error: err.message,
+    });
+  }
+};
+
+exports.updatePreferencesField = async (req, res) => {
+  try {
+    const { error } = updatePreferencesFieldSchema.validate(req.body, { allowUnknown: false });
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { fieldId, preferencesGroupId, label } = req.body;
+    const adminId = req.id;
+
+    const existingField = await PreferencesFields.findById(fieldId);
+    if (!existingField) {
+      return res.status(404).json({ message: "Preferences field not found" });
+    }
+
+    if (existingField.isDeleted) {
+      return res.status(400).json({ message: "Cannot update a deleted preferences field" });
+    }
+
+    if (preferencesGroupId) {
+      const existingGroup = await PreferencesGroup.findById(preferencesGroupId);
+      if (!existingGroup || existingGroup.isDeleted) {
+        return res.status(400).json({ message: "Preferences group does not exist or has been deleted" });
+      }
+    }
+
+    if (label) {
+      const duplicateField = await PreferencesFields.findOne({
+        label: label,
+        preferencesGroupId: preferencesGroupId || existingField.preferencesGroupId,
+        _id: { $ne: fieldId },
+        isDeleted: false,
+      });
+
+      if (duplicateField) {
+        return res.status(400).json({ message: "A preferences field with this label already exists in the group" });
+      }
+    }
+
+    const updatedField = await PreferencesFields.findByIdAndUpdate(
+      fieldId,
+      { ...req.body, editedBy: adminId },
+      { new: true }
+    );
+
+    res.status(200).json({
+      message: "Preferences field updated successfully",
+      data: updatedField,
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      message: "Error updating preferences field",
+      error: err.message,
+    });
+  }
+};
+
+exports.changePreferencesFieldGroup = async (req, res) => {
+  try {
+    const { fieldId, newGroupId } = req.body;
+    const adminId = req.id;
+
+    if (!fieldId || !newGroupId) {
+      return res.status(400).json({ message: "Field ID and New Group ID are required" });
+    }
+
+    const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
+    if (!isValidObjectId(fieldId) || !isValidObjectId(newGroupId)) {
+      return res.status(400).json({ message: "Invalid Field ID or Group ID format" });
+    }
+
+    const existingField = await PreferencesFields.findById(fieldId);
+    if (!existingField) {
+      return res.status(404).json({ message: "Preferences field not found" });
+    }
+
+    if (existingField.isDeleted) {
+      return res.status(400).json({ message: "Cannot change group for a deleted preferences field" });
+    }
+
+    const targetGroup = await PreferencesGroup.findById(newGroupId);
+    if (!targetGroup) {
+      return res.status(404).json({ message: "Target preferences group not found" });
+    }
+
+    if (targetGroup.isDeleted) {
+      return res.status(400).json({ message: "Cannot move to a deleted preferences group" });
+    }
+
+    existingField.preferencesGroupId = newGroupId;
+    existingField.editedBy = adminId;
+    await existingField.save();
+
+    res.status(200).json({ message: "Preferences field group changed successfully", data: existingField });
+
+  } catch (err) {
+    res.status(500).json({ message: "Error changing preferences field group", error: err.message });
+  }
+};
+
+exports.deletePreferencesField = async (req, res) => {
+  try {
+    const { fieldId } = req.body;
+    const adminId = req.id;
+
+    if (!fieldId) {
+      return res.status(400).json({ message: "Field ID is required" });
+    }
+
+    const existingField = await PreferencesFields.findById(fieldId);
+    if (!existingField) {
+      return res.status(404).json({ message: "Preferences field not found" });
+    }
+
+    if (existingField.isDeleted) {
+      return res.status(400).json({ message: "Preferences field is already deleted" });
+    }
+
+    await PreferencesFields.findByIdAndUpdate(fieldId, { isDeleted: true, editedBy: adminId }, { new: true });
+
+    res.status(200).json({ message: "Preferences field deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Error deleting preferences field", error: err.message });
+  }
+};
+
+exports.getAllPreferencesGroupFields = async (req, res) => {
+  try {
+    const groupFieldList = await PreferencesGroup.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "preferencesfields",
+          localField: "_id",
+          foreignField: "preferencesGroupId",
+          as: "fields"
+        }
+      },
+      {
+        $unwind: {
+          path: "$fields",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $match: { "fields.isDeleted": false }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          groupName: { $first: "$name" },
+          fields: {
+            $push: {
+              fieldId: "$fields._id",
+              fieldName: "$fields.label",
+              profileField: "$fields.profileField",
+              clientTypes: "$fields.clientTypes",
+              weight: "$fields.weight",
+              useInMatch: "$fields.useInMatch",
+              choices: "$fields.choices",
+              helpText: "$fields.helpText",
+              dealBreak: "$fields.dealBreak",
+              isActive: "$fields.isActive"
+            }
+          }
+        }
+      },
+      {
+        $sort: { groupName: 1 }
+      }
+    ]);
+
+    res.status(200).json({
+      message: "Preferences groups with their fields retrieved successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "An error occurred while retrieving preferences groups and fields.",
+      error: error.message
+    });
+  }
+};
+
+
+/////////////////////////    //////////////////////////
+
+
 
 exports.form_group_List = async (req, res) => {
   try {
@@ -871,120 +1647,6 @@ exports.getMatchingUsers = async (req, res) => {
       const {customerId} = req.body;
       const matches = await findMatchingUsers(customerId);
       res.json({ matches });
-  } catch (error) {
-      res.status(500).json({ message: error.message });
-  }
-};
-
-exports.getCustomerProfile = async (req, res) => {
-  try {
-      const {customerId} = req.body;
-      const customerObjectId = new mongoose.Types.ObjectId(customerId);
-
-      const customer = await Customer.aggregate([
-          {
-              $match: { _id: customerObjectId }
-          },
-          {
-              $lookup: {
-                  from: "formfieldsvalues",
-                  localField: "_id",
-                  foreignField: "customeId",
-                  as: "formFields"
-              }
-          },
-          {
-              $lookup: {
-                  from: "formgroups",
-                  localField: "formFields.groupId",
-                  foreignField: "_id",
-                  as: "groups"
-              }
-          },
-          {
-              $lookup: {
-                  from: "formfields",
-                  localField: "formFields.fieldId",
-                  foreignField: "_id",
-                  as: "fields"
-              }
-          },
-          {
-              $project: {
-                  personalDetails: 1,
-                  matchPreferences: 1,
-                  dynamicFields: {
-                      $map: {
-                          input: "$groups",
-                          as: "group",
-                          in: {
-                              groupId: "$$group._id",
-                              groupName: "$$group.name",
-                              fields: {
-                                  $map: {
-                                      input: {
-                                          $filter: {
-                                              input: "$formFields",
-                                              as: "ff",
-                                              cond: { $eq: ["$$ff.groupId", "$$group._id"] }
-                                          }
-                                      },
-                                      as: "ff",
-                                      in: {
-                                          fieldId: "$$ff.fieldId",
-                                          value: "$$ff.value",
-                                          fieldDetails: {
-                                              $arrayElemAt: [
-                                                  {
-                                                      $filter: {
-                                                          input: "$fields",
-                                                          as: "field",
-                                                          cond: { $eq: ["$$field._id", "$$ff.fieldId"] }
-                                                      }
-                                                  },
-                                                  0
-                                              ]
-                                          }
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                  }
-              }
-          },
-          {
-              $project: {
-                  personalDetails: 1,
-                  matchPreferences: 1,
-                  dynamicFields: {
-                      $map: {
-                          input: "$dynamicFields",
-                          as: "group",
-                          in: {
-                              groupId: "$$group.groupId",
-                              groupName: "$$group.groupName",
-                              fields: {
-                                  $map: {
-                                      input: "$$group.fields",
-                                      as: "field",
-                                      in: {
-                                          fieldId: "$$field.fieldId",
-                                          fieldName: "$$field.fieldDetails.attributeName",
-                                          value: "$$field.value"
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-      ]);
-      res.status(201).json({
-        message: "Customer details",
-        data: customer
-    });
   } catch (error) {
       res.status(500).json({ message: error.message });
   }
@@ -1172,49 +1834,3 @@ exports.addCustomer = async (req, res) =>{
   });
   }
 }
-
-exports.reactivateCustomer = async (req, res) => {
-  try {
-      const { customerId } = req.body;
-
-      if (!customerId) {
-          return res.status(400).json({
-              success: false,
-              message: 'Customer ID is required in the request body'
-          });
-      }
-
-      const customer = await Customer.findById(customerId);
-
-      if (!customer) {
-          return res.status(404).json({
-              success: false,
-              message: 'Customer not found'
-          });
-      }
-
-      if (!customer.isDeleted) {
-          return res.status(400).json({
-              success: false,
-              message: 'Customer is already active'
-          });
-      }
-
-      customer.isDeleted = false;
-      await customer.save();
-
-      res.status(200).json({
-          success: true,
-          message: 'Customer reactivated successfully',
-          customer
-      });
-
-  } catch (error) {
-      console.error('Error reactivating customer:', error.message);
-      res.status(500).json({
-          success: false,
-          message: 'Failed to reactivate customer',
-          error: error.message
-      });
-  }
-};

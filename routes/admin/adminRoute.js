@@ -8,6 +8,7 @@ const path = require('path');
 
 
 const {checkAdminToken} = require("../../middleware/authMiddleware")
+const FileUpload  = require("../../middleware/upload")
 
 
 const {
@@ -31,7 +32,26 @@ const {
 
   addCustomerByAdmin,
   fetchCustomerFieldGroups,
-  updateCustomerByAdmin,
+  fetchPreferencesFieldGroups,
+  updateCustomerBasicDetail,
+  updateCustomerProfile,
+  updateCustomerMatchPreferences,
+
+  uploadFile,
+
+  createClientList,
+  editClientList,
+  removeClientList,
+
+  createPreferencesGroup,
+  updatePreferencesGroup,
+  deletePreferencesGroup,
+  getPreferencesGroupList,
+  createPreferencesField,
+  updatePreferencesField,
+  changePreferencesFieldGroup,
+  deletePreferencesField,
+  getAllPreferencesGroupFields,
 
   form_group_List,
   getClientSubmissions,
@@ -100,19 +120,48 @@ router.post("/deleteFormField",checkAdminToken, deleteFormField);
 router.get("/getFromGroupList",checkAdminToken, allGroupFieldList);
 
 
+// // Preferences Group Routes
+router.post("/createPreferencesGroup", checkAdminToken, createPreferencesGroup);
+router.post("/updatePreferencesGroup", checkAdminToken, updatePreferencesGroup);
+router.post("/deletePreferencesGroup", checkAdminToken, deletePreferencesGroup);
+router.get("/allPreferencesGroupList", checkAdminToken, getPreferencesGroupList);
+
+// // Preferences Field Routes
+router.post("/createPreferencesField", checkAdminToken, createPreferencesField);
+router.post("/updatePreferencesField", checkAdminToken, updatePreferencesField);
+router.post("/changePreferencesFieldGroup", checkAdminToken, changePreferencesFieldGroup);
+router.post("/deletePreferencesField", checkAdminToken, deletePreferencesField);
+
+// // Get All Group Fields
+router.get("/getAllPreferencesGroupFields", checkAdminToken, getAllPreferencesGroupFields);
+
+
 router.post("/addCustomerByAdmin",checkAdminToken, addCustomerByAdmin)
 router.get("/fetchCustomerFieldGroups",checkAdminToken, fetchCustomerFieldGroups)
+router.get("/fetchPreferencesFieldGroups",checkAdminToken, fetchPreferencesFieldGroups)
 // router.post("/updateCustomerByAdmin",checkAdminToken, updateCustomerByAdmin)
+router.post("/updateCustomerBasicDetail",checkAdminToken, updateCustomerBasicDetail)
+router.post("/updateCustomerProfile",checkAdminToken, updateCustomerProfile)
+router.post("/updateCustomerMatchPreferences",checkAdminToken, updateCustomerMatchPreferences)
+router.post("/deleteCustomer", checkAdminToken, reactivateCustomer)
+router.post("/customerProfile", checkAdminToken, getCustomerProfile)
+
+
+router.post("/upload",checkAdminToken, FileUpload.single("file"), uploadFile);
+
+
+router.post("/createClientList", checkAdminToken, createClientList)
+router.post("/editClientList", checkAdminToken, editClientList)
+router.post("/removeClientList", checkAdminToken, removeClientList)
+
 
 
 
 router.get("/clientsAddedToday", getClientsAddedToday)
 router.post("/matchingUsers", getMatchingUsers)
-router.post("/customerProfile", getCustomerProfile)
 router.post("/fromFieldList", getAllFieldsList)
 router.post("/addCustomer", addCustomer)
 // router.post("/updateCustomer", updateCustomer)
-router.post("/deactiveCustomer", reactivateCustomer)
 
 router.route('/getFromGroupList').get(form_group_List);
 router.route('/clientSubmissions').get(getClientSubmissions);
