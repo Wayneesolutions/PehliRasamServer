@@ -36,10 +36,16 @@ const {
   updateCustomerBasicDetail,
   updateCustomerProfile,
   updateCustomerMatchPreferences,
+  allActiveCustomer,
+  getCustomerBasicDetail,
+  getCustomerProfileDetail,
+  getCustomerMatchPreferencesDetail,
+
 
   uploadFile,
 
   createClientList,
+  getAllClientLists,
   editClientList,
   removeClientList,
 
@@ -145,12 +151,17 @@ router.post("/updateCustomerProfile",checkAdminToken, updateCustomerProfile)
 router.post("/updateCustomerMatchPreferences",checkAdminToken, updateCustomerMatchPreferences)
 router.post("/deleteCustomer", checkAdminToken, reactivateCustomer)
 router.post("/customerProfile", checkAdminToken, getCustomerProfile)
+router.get("/allActiveCustomer", checkAdminToken, allActiveCustomer)
+router.post("/getCustomerBasicDetail", checkAdminToken, getCustomerBasicDetail)
+router.post("/getCustomerProfileDetail", checkAdminToken, getCustomerProfileDetail)
+router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMatchPreferencesDetail)
 
 
 router.post("/upload",checkAdminToken, FileUpload.single("file"), uploadFile);
 
 
 router.post("/createClientList", checkAdminToken, createClientList)
+router.get("/getAllClientLists", checkAdminToken, getAllClientLists)
 router.post("/editClientList", checkAdminToken, editClientList)
 router.post("/removeClientList", checkAdminToken, removeClientList)
 

@@ -1134,6 +1134,194 @@ exports.getCustomerProfile = async (req, res) => {
   }
 };
 
+exports.getCustomerBasicDetail = async (req, res) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    const customer = await Customer.findOne({ _id: customerId, isDeleted: false })
+      .select("firstName lastName email contact address imagePath createdAt updatedAt")
+      .lean();
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Customer details retrieved successfully",
+      data: customer,
+    });
+
+  } catch (error) {
+    console.error("Error fetching customer details:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer details",
+      error: error.message,
+    });
+  }
+};
+
+exports.getCustomerProfileDetail = async (req, res) => {
+  try {
+      const { customerId } = req.body;
+
+      if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
+          return res.status(400).json({
+              success: false,
+              message: "Invalid or missing Customer ID"
+          });
+      }
+
+      const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+      const groups = await FormGroup.find({ isDeleted: false, isActive: true });
+
+      const fields = await FormField.find({ isDeleted: false, isActive: true });
+
+      const values = await FormFieldsValue.find({ customerId });
+
+      const dynamicFields = groups
+          .map(group => {
+              const groupFields = fields.filter(field => field.form_group_id.toString() === group._id.toString());
+
+              if (groupFields.length === 0) return null;
+
+              return {
+                  groupId: group._id,
+                  groupName: group.name,
+                  fields: groupFields.map(field => {
+                      const fieldValue = values.find(val => val.fieldId.toString() === field._id.toString());
+
+                      return {
+                          fieldId: field._id,
+                          fieldName: field.attributeName,
+                          attributeOption: field.attributeOption,
+                          attributeType: field.attributeType,
+                          value: fieldValue ? fieldValue.value : "NaN"
+                      };
+                  })
+              };
+          })
+          .filter(group => group !== null);
+
+      res.status(200).json({
+          success: true,
+          message: "Customer profile details retrieved successfully",
+          data: dynamicFields
+      });
+
+  } catch (error) {
+      console.error("Error fetching customer profile details:", error);
+      res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+          error: error.message
+      });
+  }
+};
+
+exports.getCustomerMatchPreferencesDetail = async (req, res) => {
+  try {
+      const { customerId } = req.body;
+
+      if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
+          return res.status(400).json({
+              success: false,
+              message: "Invalid or missing Customer ID"
+          });
+      }
+
+      const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+      const groups = await PreferencesGroup.find({ isDeleted: false, isActive: true });
+      const fields = await PreferencesFields.find({ isDeleted: false, isActive: true });
+      const values = await PreferencesFieldsValue.find({ customerId });
+
+      const matchPreferences = groups
+          .map(group => {
+              const groupFields = fields.filter(field => field.preferencesGroupId.toString() === group._id.toString());
+
+              if (groupFields.length === 0) return null;
+
+              return {
+                  groupId: group._id,
+                  groupName: group.name,
+                  fields: groupFields.map(field => {
+                      const fieldValue = values.find(val => val.preferencesFieldId.toString() === field._id.toString());
+
+                      return {
+                          fieldId: field._id,
+                          fieldName: field.label,
+                          profileField: field.profileField,
+                          clientTypes: field.clientTypes,
+                          weight: field.weight,
+                          useInMatch: field.useInMatch,
+                          choices: field.choices,
+                          helpText: field.helpText,
+                          dealBreak: field.dealBreak,
+                          value: fieldValue ? fieldValue.value : "NaN"
+                      };
+                  })
+              };
+          })
+          .filter(group => group !== null);
+
+      res.status(200).json({
+          success: true,
+          message: "Customer match preferences retrieved successfully",
+          data: matchPreferences
+      });
+
+  } catch (error) {
+      res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+          error: error.message
+      });
+  }
+};
+
+exports.allActiveCustomer = async (req, res) => {
+  try {
+    const customers = await Customer.find(
+      { activeStatus: true, isDeleted: false },
+      { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1 }
+    );
+
+    if (!customers.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No active customers found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Active customers retrieved successfully",
+      data: customers
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching active customers",
+      error: error.message
+    });
+  }
+};
+
+
 exports.createClientList = async (req, res) => {
   try {
     const { listName, color } = req.body;
@@ -1149,6 +1337,25 @@ exports.createClientList = async (req, res) => {
     res.status(201).json({ success: true, message: "Client List added!", data: newClientList });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error adding client list", error });
+  }
+};
+
+exports.getAllClientLists = async (req, res) => {
+  try {
+    const clientLists = await ClientList.find({ isDeleted: false }).select("_id listName color status");
+
+    res.status(200).json({
+      success: true,
+      message: "Client lists fetched successfully",
+      data: clientLists
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching client lists",
+      error: error.message
+    });
   }
 };
 

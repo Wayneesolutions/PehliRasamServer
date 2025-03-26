@@ -12,7 +12,8 @@ const customerSchema = new mongoose.Schema({
         type: String, 
         minlength: 3, 
         maxlength: 50, 
-        trim: true 
+        trim: true,
+        Default: null
     },
     lastName: { 
         type: String, 
@@ -44,8 +45,9 @@ const customerSchema = new mongoose.Schema({
         country: { 
             type: String, 
             trim: true, 
-            required: true, 
-            match: [/^[A-Z]{2,3}$/, "Invalid country code"]  // ISO 3166-1 alpha-2 (US, IN) or alpha-3 (USA, IND)
+            // required: true, 
+            match: [/^[A-Z]{2,3}$/, "Invalid country code"],
+            Default: null
         },
         postalCode: { 
             type: String, 

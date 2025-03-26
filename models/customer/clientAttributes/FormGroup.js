@@ -7,7 +7,7 @@ const formGroupSchema = new mongoose.Schema({
   },
   isActive: {
     type: Boolean,
-    default: false
+    default: true
   },
   editedBy: {
     type: mongoose.Schema.Types.ObjectId,
