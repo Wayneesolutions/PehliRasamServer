@@ -8,7 +8,8 @@ const FormField = require("../../models/customer/clientAttributes/FormField")
 const FormFieldsValue = require("../../models/customer/clientAttributes/FromFieldValue")
 const Customer = require("../../models/customer/customerModel")
 const { findMatchingUsers } = require('../../services/matchService');
-const Admin = require("../../models/admin/adminModel")
+const Admin = require("../../models/admin/adminModel");
+const FieldType = require("../../models/customer/clientAttributes/fieldType");
 const ClientList = require("../../models/customer/clientList");
 const { notificationSchema } = require('../../validations/notificationValidation');
 const { permissionSchema } = require('../../validations/permissionValidation');
@@ -615,6 +616,49 @@ exports.allGroupFieldList = async (req, res) => {
       message: "An error occurred while retrieving form groups and fields.",
       error: error.message
     });
+  }
+};
+
+
+///
+
+exports.createFieldType = async (req, res) => {
+  try {
+    const createdBy = req.id;
+    const { name, type,} = req.body;
+
+    // Validate required fields
+    if (!name || !type || !createdBy) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Check if type is valid
+    const validTypes = ["string", "integer", "float", "boolean", "image", "file", "date", "time", "select", "multi-select", "long-text"];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ message: "Invalid field type" });
+    }
+
+    // Create new FieldType entry
+    const newFieldType = new FieldType({
+      name,
+      type,
+      createdBy,
+    });
+
+    await newFieldType.save();
+    res.status(201).json({ message: "FieldType created successfully", data: newFieldType });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+exports.getAllFieldTypeList = async (req, res) => {
+  try {
+    console.log("::::::::::")
+    const fields = await FieldType.find({ isDeleted: false }).sort({ createdAt: -1 }); // Fetch all non-deleted fields
+    res.status(200).json({ message: "FieldType list fetched successfully", data: fields });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 

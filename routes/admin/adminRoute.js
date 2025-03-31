@@ -30,6 +30,9 @@ const {
   deleteFormField,
   allGroupFieldList,
 
+  createFieldType,
+  getAllFieldTypeList,
+
   addCustomerByAdmin,
   fetchCustomerFieldGroups,
   fetchPreferencesFieldGroups,
@@ -124,6 +127,10 @@ router.post("/deleteFormField",checkAdminToken, deleteFormField);
 
 
 router.get("/getFromGroupList",checkAdminToken, allGroupFieldList);
+
+
+router.post("/createFieldType",checkAdminToken, createFieldType);
+router.get("/allFieldTypeList",checkAdminToken, getAllFieldTypeList);
 
 
 // // Preferences Group Routes
