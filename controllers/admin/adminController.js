@@ -16,6 +16,7 @@ const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
 const { formFieldSchema, formGroupSchema } = require("../../validations/formValidation");
 const { updateCustomerSchema } = require("../../validations/customerValidation");
+// const { containerClient } = require('../../config/azureConfig');
 const getImageUrl = require('../../utils/getImageUrl');
 const PreferencesGroup = require("../../models/customer/preferencesAttributes/preferencesGroup");
 const PreferencesFields = require("../../models/customer/preferencesAttributes/preferencesFields");
@@ -690,6 +691,44 @@ exports.uploadFile = async (req, res) => {
       });
   }
 };
+
+// exports.uploadFile = async (req, res) => {
+//   try {
+//       if (!req.file) {
+//           return res.status(400).json({ success: false, message: "No file uploaded" });
+//       }
+
+//       const isProduction = process.env.NODE_ENV === "production";
+//       let fileUrl;
+
+//       if (isProduction) {
+//           const fileName = req.file.filename;
+//           const filePath = req.file.path;
+
+//           const blockBlobClient = containerClient.getBlockBlobClient(fileName);
+//           const fileStream = fs.createReadStream(filePath);
+//           await blockBlobClient.uploadStream(fileStream);
+
+//           fileUrl = blockBlobClient.url;
+//       } else {
+//           fileUrl = `${req.protocol}://${req.get("host")}/uploads/images/${req.file.filename}`;
+//       }
+
+//       res.status(200).json({
+//           success: true,
+//           message: "File uploaded successfully",
+//           fileUrl: fileUrl
+//       });
+
+//   } catch (error) {
+//       console.error("Upload Error:", error);
+//       res.status(500).json({
+//           success: false,
+//           message: "Failed to upload file",
+//           error: error.message
+//       });
+//   }
+// };
 //customer section--
 exports.addCustomerByAdmin = async (req, res) => {
   try {
@@ -1478,6 +1517,7 @@ exports.createPreferencesGroup = async (req, res) => {
     await newGroup.save();
 
     res.status(201).json({ 
+      success: true,
       message: "Preferences group created successfully", 
       data: newGroup 
     });
@@ -1527,6 +1567,7 @@ exports.updatePreferencesGroup = async (req, res) => {
     );
 
     return res.status(200).json({
+      success: true,
       message: "Preferences group updated successfully",
       data: updatedGroup,
     });
@@ -1562,7 +1603,8 @@ exports.deletePreferencesGroup = async (req, res) => {
     existingGroup.editedBy = adminId;
     await existingGroup.save();
 
-    return res.status(200).json({ 
+    return res.status(200).json({
+      success: true, 
       message: "Preferences group deleted successfully", 
       data: existingGroup 
     });
@@ -1580,6 +1622,7 @@ exports.getPreferencesGroupList = async (req, res) => {
     const groups = await PreferencesGroup.find({ isDeleted: false }).select("_id name");
 
     res.status(200).json({ 
+      success: true,
       message: "Preferences groups fetched successfully", 
       data: groups 
     });
@@ -1629,6 +1672,7 @@ exports.createPreferencesField = async (req, res) => {
     await newField.save();
 
     res.status(201).json({
+      success: true,
       message: "Preferences field created successfully",
       data: newField,
     });
@@ -1687,6 +1731,7 @@ exports.updatePreferencesField = async (req, res) => {
     );
 
     res.status(200).json({
+      success: true,
       message: "Preferences field updated successfully",
       data: updatedField,
     });
@@ -1735,7 +1780,7 @@ exports.changePreferencesFieldGroup = async (req, res) => {
     existingField.editedBy = adminId;
     await existingField.save();
 
-    res.status(200).json({ message: "Preferences field group changed successfully", data: existingField });
+    res.status(200).json({success: true, message: "Preferences field group changed successfully", data: existingField });
 
   } catch (err) {
     res.status(500).json({ message: "Error changing preferences field group", error: err.message });
@@ -1764,7 +1809,7 @@ exports.deletePreferencesField = async (req, res) => {
 
     res.status(200).json({ message: "Preferences field deleted successfully" });
   } catch (err) {
-    res.status(500).json({ message: "Error deleting preferences field", error: err.message });
+    res.status(500).json({success: true, message: "Error deleting preferences field", error: err.message });
   }
 };
 
@@ -1817,6 +1862,7 @@ exports.getAllPreferencesGroupFields = async (req, res) => {
     ]);
 
     res.status(200).json({
+      success: true,
       message: "Preferences groups with their fields retrieved successfully.",
       data: groupFieldList
     });
