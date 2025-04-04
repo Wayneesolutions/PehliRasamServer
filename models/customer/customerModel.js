@@ -22,6 +22,11 @@ const customerSchema = new mongoose.Schema({
         maxlength: 50, 
         trim: true 
     },
+    Number: { 
+        type: Number, 
+        // required: true, 
+        // trim: true 
+    },
     email: { 
         type: String, 
         required: true, 

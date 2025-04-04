@@ -62,6 +62,10 @@ const {
   deletePreferencesField,
   getAllPreferencesGroupFields,
 
+  submissionForm,
+  getSubmissionFormById,
+  updateSubmissionForm,
+
   form_group_List,
   getClientSubmissions,
   getRecentlySubmittedClients,
@@ -171,6 +175,11 @@ router.post("/createClientList", checkAdminToken, createClientList)
 router.get("/getAllClientLists", checkAdminToken, getAllClientLists)
 router.post("/editClientList", checkAdminToken, editClientList)
 router.post("/removeClientList", checkAdminToken, removeClientList)
+
+
+router.post('/createSubmissionForm',checkAdminToken, submissionForm);
+router.post('/SubmissionFormById',checkAdminToken, getSubmissionFormById);
+router.post('/updateSubmissionForm',checkAdminToken, updateSubmissionForm);
 
 
 

@@ -5,7 +5,7 @@ const {validateProfile} = require('../../validations/userValidation');
 
 const {
     createCustomer,
-//   loginUser,
+  submissionForm,
 } = require('../../controllers/customer/customerController');
 
 // // Public routes

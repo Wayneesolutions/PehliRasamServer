@@ -18,6 +18,7 @@ const { formFieldSchema, formGroupSchema } = require("../../validations/formVali
 const { updateCustomerSchema } = require("../../validations/customerValidation");
 // const { containerClient } = require('../../config/azureConfig');
 const getImageUrl = require('../../utils/getImageUrl');
+const SubmissionForm = require("../../models/customer/submissionForm/submissionForm");
 const PreferencesGroup = require("../../models/customer/preferencesAttributes/preferencesGroup");
 const PreferencesFields = require("../../models/customer/preferencesAttributes/preferencesFields");
 const PreferencesFieldsValue = require("../../models/customer/preferencesAttributes/preferencesFieldsValue");
@@ -655,11 +656,21 @@ exports.createFieldType = async (req, res) => {
 
 exports.getAllFieldTypeList = async (req, res) => {
   try {
-    console.log("::::::::::")
-    const fields = await FieldType.find({ isDeleted: false }).sort({ createdAt: -1 }); // Fetch all non-deleted fields
-    res.status(200).json({ message: "FieldType list fetched successfully", data: fields });
+    const fields = await FieldType.find({ isDeleted: false })
+      .select('_id name type')  // Only select these fields
+      .sort({ createdAt: -1 });
+      
+    res.status(200).json({
+      success: true,
+      message: "FieldType list fetched successfully",
+      data: fields
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
   }
 };
 
@@ -931,66 +942,78 @@ exports.updateCustomerBasicDetail = async (req, res) => {
 
 exports.updateCustomerProfile = async (req, res) => {
   try {
-      const updatedBy = req.id;
-      const { customerId, profileValue } = req.body;
+    const updatedBy = req.id;
+    const { customerId, profileValue } = req.body;
 
-      if (!customerId) {
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer ID is required'
+      });
+    }
+
+    const customer = await Customer.findOne({ _id: customerId, isDeleted: false });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found or has been deleted'
+      });
+    }
+
+    if (profileValue && Array.isArray(profileValue) && profileValue.length > 0) {
+      await FormFieldsValue.deleteMany({ customerId });
+
+      const insertData = [];
+
+      for (const group of profileValue) {
+        const { groupId, groupFields } = group;
+
+        if (!groupId || !Array.isArray(groupFields)) {
           return res.status(400).json({
-              success: false,
-              message: 'Customer ID is required'
+            success: false,
+            message: 'Invalid group structure in profileValue'
           });
-      }
+        }
 
-      const customer = await Customer.findOne({ _id: customerId, isDeleted: false });
+        for (const field of groupFields) {
+          const { fieldID, fieldValue } = field;
 
-      if (!customer) {
-          return res.status(404).json({
+          if (!fieldID || typeof fieldValue === 'undefined') {
+            return res.status(400).json({
               success: false,
-              message: 'Customer not found or has been deleted'
-          });
-      }
-
-      if (profileValue && Array.isArray(profileValue) && profileValue.length > 0) {
-          await FormFieldsValue.deleteMany({ customerId });
-
-          const insertData = [];
-          for (const group of profileValue) {
-              const { preferencesGroupId, groupFields } = group;
-              if (!preferencesGroupId || !groupFields || !Array.isArray(groupFields)) {
-                  return res.status(400).json({
-                      success: false,
-                      message: 'Invalid group structure in profileValue'
-                  });
-              }
-
-              for (const field of groupFields) {
-                  const { fieldId, fieldValue } = field;
-                  insertData.push({
-                      preferencesGroupId: new mongoose.Types.ObjectId(preferencesGroupId),
-                      fieldId: new mongoose.Types.ObjectId(fieldId),
-                      value: fieldValue,
-                      customerId: new mongoose.Types.ObjectId(customerId)
-                  });
-              }
+              message: 'Invalid field structure in groupFields'
+            });
           }
 
-          await FormFieldsValue.insertMany(insertData);
+          insertData.push({
+            groupId: new mongoose.Types.ObjectId(groupId),
+            fieldId: new mongoose.Types.ObjectId(fieldID),
+            value: fieldValue,
+            customerId: new mongoose.Types.ObjectId(customerId),
+            updatedBy
+          });
+        }
       }
 
-      res.status(200).json({
-          success: true,
-          message: 'Customer Profile updated successfully',
-          updatedCustomer: customer
-      });
+      await FormFieldsValue.insertMany(insertData);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Customer Profile updated successfully',
+      updatedCustomer: customer
+    });
 
   } catch (error) {
-      res.status(500).json({
-          success: false,
-          message: 'Failed to update customer',
-          error: error.message
-      });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update customer',
+      error: error.message
+    });
   }
 };
+
 
 exports.updateCustomerMatchPreferences = async (req, res) => {
   try {
@@ -1871,6 +1894,177 @@ exports.getAllPreferencesGroupFields = async (req, res) => {
       message: "An error occurred while retrieving preferences groups and fields.",
       error: error.message
     });
+  }
+};
+
+
+
+/////
+exports.submissionForm = async (req, res) => {
+  try {
+    const createdBy = req.id;
+    const { formName, clientDetails, matchDetails } = req.body;
+
+    if (!formName || !clientDetails || !matchDetails || !createdBy) {
+      return res.status(400).json({ error: "All required fields must be provided." });
+    }
+
+    // Validate clientDetails
+    for (let detail of clientDetails) {
+      if (!detail.group || !detail.fields || !Array.isArray(detail.fields)) {
+        return res.status(400).json({ error: "Each clientDetail must include group and fields array." });
+      }
+      const groupExists = await FormGroup.findById(detail.group);
+      if (!groupExists) {
+        return res.status(404).json({ error: `No FormGroup found with groupId: ${detail.group}.` });
+      }
+      for (let fieldId of detail.fields) {
+        const fieldExists = await FormField.findById(fieldId);
+        if (!fieldExists) {
+          return res.status(404).json({ error: `No FormField found with fieldId: ${fieldId}.` });
+        }
+      }
+    }
+
+    // Validate matchDetails
+    for (let detail of matchDetails) {
+      if (!detail.group || !detail.fields || !Array.isArray(detail.fields)) {
+        return res.status(400).json({ error: "Each matchDetail must include group and fields array." });
+      }
+      const groupExists = await PreferencesGroup.findById(detail.group);
+      if (!groupExists) {
+        return res.status(404).json({ error: `No PreferencesGroup found with groupId: ${detail.group}.` });
+      }
+      for (let fieldId of detail.fields) {
+        const fieldExists = await PreferencesFields.findById(fieldId);
+        if (!fieldExists) {
+          return res.status(404).json({ error: `No PreferencesFields found with fieldId: ${fieldId}.` });
+        }
+      }
+    }
+
+    const newSubmission = new SubmissionForm({
+      formName,
+      clientDetails,
+      matchDetails,
+      createdBy,
+    });
+
+    // Save to database
+    await newSubmission.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Submission form created successfully!",
+      data: newSubmission
+    });
+  } catch (error) {
+    console.error("Error creating submission form:", error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+};
+
+exports.getSubmissionFormById = async (req, res) => {
+  try {
+    const { submissionFormId } = req.body;
+
+    if (!submissionFormId) {
+      return res.status(400).json({ error: "SubmissionForm ID is required." });
+    }
+
+    const submissionForm = await SubmissionForm.findById(submissionFormId)
+      .populate({
+        path: "clientDetails.group",
+        model: FormGroup,
+        select: "-__v -isDeleted -createdAt -updatedAt"
+      })
+      .populate({
+        path: "clientDetails.fields",
+        model: FormField,
+        select: "-__v -isDeleted -createdAt -updatedAt"
+      })
+      .populate({
+        path: "matchDetails.group",
+        model: PreferencesGroup,
+        select: "-__v -isDeleted -createdAt -updatedAt"
+      })
+      .populate({
+        path: "matchDetails.fields",
+        model: PreferencesFields,
+        select: "-__v -isDeleted -createdAt -updatedAt"
+      })
+      // .populate("createdBy", "name email")
+      // .populate("updatedBy", "name email");
+
+    if (!submissionForm) {
+      return res.status(404).json({ error: "Submission Form not found." });
+    }
+
+    res.status(200).json({ data: submissionForm });
+  } catch (error) {
+    console.error("Error fetching submission form:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.updateSubmissionForm = async (req, res) => {
+  try {
+    const updatedBy = req.id;
+    const { submissionFormId, formName, clientDetails, matchDetails } = req.body;
+
+    if (!submissionFormId) {
+      return res.status(400).json({ error: "SubmissionForm ID is required." });
+    }
+
+    let submissionForm = await SubmissionForm.findById(submissionFormId);
+    if (!submissionForm) {
+      return res.status(404).json({ error: "Submission Form not found." });
+    }
+
+    // Validate clientDetails
+    if (clientDetails) {
+      for (let detail of clientDetails) {
+        const groupExists = await FormGroup.findById(detail.group);
+        if (!groupExists) {
+          return res.status(404).json({ error: `No FormGroup found for ID ${detail.group}` });
+        }
+        for (let field of detail.fields) {
+          const fieldExists = await FormField.findById(field);
+          if (!fieldExists) {
+            return res.status(404).json({ error: `No FormField found for ID ${field}` });
+          }
+        }
+      }
+    }
+
+    // Validate matchDetails
+    if (matchDetails) {
+      for (let detail of matchDetails) {
+        const groupExists = await PreferencesGroup.findById(detail.group);
+        if (!groupExists) {
+          return res.status(404).json({ error: `No PreferencesGroup found for ID ${detail.group}` });
+        }
+        for (let field of detail.fields) {
+          const fieldExists = await PreferencesFields.findById(field);
+          if (!fieldExists) {
+            return res.status(404).json({ error: `No PreferencesFields found for ID ${field}` });
+          }
+        }
+      }
+    }
+
+    // Update submission form
+    submissionForm.formName = formName || submissionForm.formName;
+    submissionForm.clientDetails = clientDetails || submissionForm.clientDetails;
+    submissionForm.matchDetails = matchDetails || submissionForm.matchDetails;
+    submissionForm.updatedBy = updatedBy || submissionForm.updatedBy;
+
+    await submissionForm.save();
+
+    res.status(200).json({ message: "Submission Form updated successfully!", data: submissionForm });
+  } catch (error) {
+    console.error("Error updating submission form:", error);
+    res.status(500).json({ error: "Internal server error." });
   }
 };
 
