@@ -1,6 +1,11 @@
+const mongoose = require("mongoose");
 const Customer = require('../../models/customer/customerModel');
+const FormFieldsValue = require("../../models/customer/clientAttributes/FromFieldValue");
+const PreferencesFieldsValue = require("../../models/customer/preferencesAttributes/preferencesFieldsValue");
 const FormField = require('../../models/customer/clientAttributes/FormField');
 const FormGroup = require('../../models/customer/clientAttributes/FormGroup');
+const PreferencesGroup = require("../../models/customer/preferencesAttributes/preferencesGroup");
+const PreferencesFields = require("../../models/customer/preferencesAttributes/preferencesFields");
 const {getGroupedAttributes, saveUserData} = require('../../utils/dbQueary')
 
 const ErrorHandler = require('../../utils/errorHandler');
@@ -168,3 +173,92 @@ exports.createCustomer = async (req, res) => {
       });
   }
 }
+
+exports.SubmissionFormDetail = async (req, res) => {
+    // const session = await mongoose.startSession();
+    // session.startTransaction();
+  
+    try {
+    //   const createdBy = req.id;
+      const {
+        BasicDetail,
+        ProfileDetails,
+        matchDetails
+      } = req.body;
+  
+      const customerData = {
+        ...BasicDetail,
+        // createdBy,
+      };
+  
+      const newCustomer = await Customer.create([customerData]);
+      const customerId = newCustomer[0]._id;
+  
+      for (let groupEntry of ProfileDetails) {
+        const { group, fields } = groupEntry;
+  
+        const groupExists = await FormGroup.findById(group);
+        if (!groupExists) {
+          throw new Error(`FormGroup not found: ${group}`);
+        }
+  
+        for (let field of fields) {
+          const { fieldId, value } = field;
+  
+          const fieldExists = await FormField.findById(fieldId);
+          if (!fieldExists) {
+            throw new Error(`FormField not found: ${fieldId}`);
+          }
+  
+          await FormFieldsValue.create([{
+            groupId: group,
+            fieldId : fieldId,
+            value: value,
+            customerId: customerId,
+          }]);
+        }
+      }
+
+  
+      for (let groupEntry of matchDetails) {
+        const { group, fields } = groupEntry;
+  
+        const groupExists = await PreferencesGroup.findById(group);
+        if (!groupExists) {
+          throw new Error(`PreferencesGroup not found: ${group}`);
+        }
+  
+        for (let field of fields) {
+          const { fieldId, value } = field;
+  
+          const fieldExists = await PreferencesFields.findById(fieldId);
+          if (!fieldExists) {
+            throw new Error(`PreferencesField not found: ${fieldId}`);
+          }
+  
+          await PreferencesFieldsValue.create([{
+            preferencesGroupId: group,
+            preferencesFieldId: fieldId,
+            value,
+            customerId,
+          }]);
+        }
+      }
+  
+    //   await session.commitTransaction();
+    //   session.endSession();
+  
+      res.status(201).json({
+        success: true,
+        message: "Full submission saved successfully.",
+        customerId,
+      });
+  
+    } catch (error) {
+    //   await session.abortTransaction();
+    //   session.endSession();
+  
+      console.error("Error in full submission:", error);
+      res.status(500).json({ error: error.message || "Internal server error." });
+    }
+  };

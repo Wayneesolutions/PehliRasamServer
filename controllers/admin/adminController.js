@@ -7,7 +7,7 @@ const FormGroup = require("../../models/customer/clientAttributes/FormGroup")
 const FormField = require("../../models/customer/clientAttributes/FormField")
 const FormFieldsValue = require("../../models/customer/clientAttributes/FromFieldValue")
 const Customer = require("../../models/customer/customerModel")
-const { findMatchingUsers } = require('../../services/matchService');
+const { findMatchingUsers } = require('../../services/azureBlobService');
 const Admin = require("../../models/admin/adminModel");
 const FieldType = require("../../models/customer/clientAttributes/fieldType");
 const ClientList = require("../../models/customer/clientList");
@@ -16,13 +16,17 @@ const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
 const { formFieldSchema, formGroupSchema } = require("../../validations/formValidation");
 const { updateCustomerSchema } = require("../../validations/customerValidation");
-// const { containerClient } = require('../../config/azureConfig');
+const { uploadFile } = require("../../services/azureBlobService");
 const getImageUrl = require('../../utils/getImageUrl');
 const SubmissionForm = require("../../models/customer/submissionForm/submissionForm");
 const PreferencesGroup = require("../../models/customer/preferencesAttributes/preferencesGroup");
 const PreferencesFields = require("../../models/customer/preferencesAttributes/preferencesFields");
 const PreferencesFieldsValue = require("../../models/customer/preferencesAttributes/preferencesFieldsValue");
 const { preferencesGroupSchema, preferencesFieldSchema, updatePreferencesFieldSchema } = require("../../validations/preferencesValidation");
+const MatchGroup = require("../../models/customer/matchGroupsAttributes/matchGroupsModel");
+const MatchGroupValue = require("../../models/customer/matchGroupsAttributes/matchGroupsValueModel");
+
+
 
 
 
@@ -678,28 +682,26 @@ exports.getAllFieldTypeList = async (req, res) => {
 
 exports.uploadFile = async (req, res) => {
   try {
-      if (!req.file) {
-          return res.status(400).json({ success: false, message: "No file uploaded" });
-      }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
 
-      const isProduction = process.env.NODE_ENV === "production";
+    // Upload file to Azure Blob Storage
+    const fileUrl = await uploadFile(req.file);
 
-      // Generate file URL
-      let fileUrl = isProduction ? req.file.location : `${req.protocol}://${req.get("host")}/uploads/images/${req.file.filename}`;
-
-      res.status(200).json({
-          success: true,
-          message: "File uploaded successfully",
-          fileUrl: fileUrl
-      });
+    res.status(200).json({
+      success: true,
+      message: "File uploaded successfully to Azure Blob Storage",
+      fileUrl: fileUrl,
+    });
 
   } catch (error) {
-      console.error("Upload Error:", error);
-      res.status(500).json({
-          success: false,
-          message: "Failed to upload file",
-          error: error.message
-      });
+    console.error("Upload Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload file",
+      error: error.message,
+    });
   }
 };
 
@@ -1903,16 +1905,16 @@ exports.getAllPreferencesGroupFields = async (req, res) => {
 exports.submissionForm = async (req, res) => {
   try {
     const createdBy = req.id;
-    const { formName, clientDetails, matchDetails } = req.body;
+    const { formName, ProfileDetails, matchDetails } = req.body;
 
-    if (!formName || !clientDetails || !matchDetails || !createdBy) {
+    if (!formName || !ProfileDetails || !matchDetails || !createdBy) {
       return res.status(400).json({ error: "All required fields must be provided." });
     }
 
-    // Validate clientDetails
-    for (let detail of clientDetails) {
+    // Validate ProfileDetails
+    for (let detail of ProfileDetails) {
       if (!detail.group || !detail.fields || !Array.isArray(detail.fields)) {
-        return res.status(400).json({ error: "Each clientDetail must include group and fields array." });
+        return res.status(400).json({ error: "Each ProfileDetail must include group and fields array." });
       }
       const groupExists = await FormGroup.findById(detail.group);
       if (!groupExists) {
@@ -1945,7 +1947,7 @@ exports.submissionForm = async (req, res) => {
 
     const newSubmission = new SubmissionForm({
       formName,
-      clientDetails,
+      ProfileDetails,
       matchDetails,
       createdBy,
     });
@@ -1974,33 +1976,45 @@ exports.getSubmissionFormById = async (req, res) => {
 
     const submissionForm = await SubmissionForm.findById(submissionFormId)
       .populate({
-        path: "clientDetails.group",
+        path: "ProfileDetails.group",
         model: FormGroup,
-        select: "-__v -isDeleted -createdAt -updatedAt"
+        select: "-__v -isDeleted -createdAt -updatedAt -createdBy -editedBy -isActive"
       })
       .populate({
-        path: "clientDetails.fields",
+        path: "ProfileDetails.fields",
         model: FormField,
         select: "-__v -isDeleted -createdAt -updatedAt"
       })
       .populate({
         path: "matchDetails.group",
         model: PreferencesGroup,
-        select: "-__v -isDeleted -createdAt -updatedAt"
+        select: "-__v -isDeleted -createdAt -updatedAt -createdBy -editedBy -isActive"
       })
       .populate({
         path: "matchDetails.fields",
         model: PreferencesFields,
         select: "-__v -isDeleted -createdAt -updatedAt"
-      })
-      // .populate("createdBy", "name email")
-      // .populate("updatedBy", "name email");
+      });
 
     if (!submissionForm) {
       return res.status(404).json({ error: "Submission Form not found." });
     }
 
-    res.status(200).json({ data: submissionForm });
+    // Extract BasicDetail fields manually
+    const BasicDetail = {
+      firstName: submissionForm.BasicDetail?.firstName || null,
+      middleName: submissionForm.BasicDetail?.middelName || null, // typo in schema - "middelName"
+      lastName: submissionForm.BasicDetail?.lastName || null,
+      Number: submissionForm.BasicDetail?.Number || null,
+      email: submissionForm.BasicDetail?.email || null,
+      address: submissionForm.BasicDetail?.address || {}
+    };
+
+    res.status(200).json({
+      BasicDetail,
+      ProfileDetails: submissionForm.ProfileDetails || [],
+      matchDetails: submissionForm.matchDetails || []
+    });
   } catch (error) {
     console.error("Error fetching submission form:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -2067,6 +2081,226 @@ exports.updateSubmissionForm = async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 };
+
+
+//add match group apis
+exports.createMatchGroup = async (req, res) => {
+  try {
+    const { groupName } = req.body;
+    const createdBy = req.id;
+
+    if (!groupName) {
+      return res.status(400).json({
+        success: false,
+        message: "Group name is required.",
+      });
+    }
+
+    const existing = await MatchGroup.findOne({ groupName, isDeleted: false });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Group name already exists.",
+      });
+    }
+
+    const newGroup = new MatchGroup({ groupName, createdBy });
+    const saved = await newGroup.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Group created successfully.",
+      data: saved,
+    });
+  } catch (err) {
+    console.error("Error creating group:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+exports.updateMatchGroupName = async (req, res) => {
+  try {
+    const { id, groupName } = req.body;
+
+    if (!id || !groupName) {
+      return res.status(400).json({
+        success: false,
+        message: "Both id and group name are required.",
+      });
+    }
+
+    const group = await MatchGroup.findOne({ _id: id, isDeleted: false });
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: "Group not found or already deleted.",
+      });
+    }
+
+    const duplicate = await MatchGroup.findOne({
+      _id: { $ne: id },
+      groupName,
+      isDeleted: false,
+    });
+
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        message: "Another group with the same name exists.",
+      });
+    }
+
+    group.groupName = groupName;
+    await group.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Group name updated successfully.",
+      data: group,
+    });
+  } catch (err) {
+    console.error("Error updating group name:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+exports.deleteMatchGroup = async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Group ID is required.",
+      });
+    }
+
+    const group = await MatchGroup.findByIdAndUpdate(
+      id,
+      { isDeleted: true },
+      { new: true }
+    );
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: "Group not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Group deleted successfully.",
+      data: group,
+    });
+  } catch (err) {
+    console.error("Error deleting group:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+exports.getAllMatchGroups = async (req, res) => {
+  try {
+    const groups = await MatchGroup.find({ isDeleted: false }).sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      message: "Groups fetched successfully.",
+      data: groups,
+    });
+  } catch (err) {
+    console.error("Error fetching groups:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+exports.createMatchGroupValue = async (req, res) => {
+  try {
+    const { matchGroupId, customerId, matchCustomerId, matchingDescription } = req.body;
+    const createdBy = req.id;
+
+    if (!matchGroupId || !customerId || !matchCustomerId?.length) {
+      return res.status(400).json({
+        success: false,
+        message: "matchGroupId, customerId and matchCustomerId[] are required.",
+      });
+    }
+
+    const value = new MatchGroupValue({
+      matchGroupId,
+      customerId,
+      matchCustomerId,
+      matchingDescription,
+      createdBy,
+    });
+
+    const saved = await value.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Match group value created successfully.",
+      data: saved,
+    });
+  } catch (err) {
+    console.error("Error creating match group value:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+exports.getMatchGroupDetails = async (req, res) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or missing Customer ID"
+      });
+    }
+
+    const allGroups = await MatchGroup.find({ isDeleted: false });
+
+    const allValues = await MatchGroupValue.find({
+      isDeleted: false,
+      customerId: customerId
+    }).populate("matchCustomerId");
+
+    const results = allGroups.map(group => {
+      // filter values that belong to this group
+      const groupValues = allValues.filter(val => val.matchGroupId.toString() === group._id.toString());
+
+      // map values if found, else return placeholder
+      const values = groupValues.length > 0
+        ? groupValues.map(val => ({
+            valueId: val._id,
+            matchCustomerId: val.matchCustomerId?._id || null,
+            matchCustomerName: val.matchCustomerId?.name || "Unknown",
+            matchingDescription: val.matchingDescription || ""
+          }))
+        : [{ valueId: null, matchCustomerId: null, matchCustomerName: "NaN", matchingDescription: "" }];
+
+      return {
+        groupId: group._id,
+        groupName: group.groupName,
+        values: values
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Match group details retrieved successfully.",
+      data: results
+    });
+  } catch (error) {
+    console.error("Error in getMatchGroupDetails:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
+
+
 
 
 /////////////////////////    //////////////////////////

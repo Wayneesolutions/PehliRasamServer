@@ -74,7 +74,16 @@ const {
   getCustomerProfile,
   getAllFieldsList,
   addCustomer,
-  reactivateCustomer
+  reactivateCustomer,
+
+  createMatchGroup,
+  updateMatchGroupName,
+  deleteMatchGroup,
+  getAllMatchGroups,
+  createMatchGroupValue,
+  // updateMatchGroupValue,
+  // deleteMatchGroupValue,
+  // getMatchGroupValues
 } = require('../../controllers/admin/adminController');
 
 
@@ -166,6 +175,8 @@ router.get("/allActiveCustomer", checkAdminToken, allActiveCustomer)
 router.post("/getCustomerBasicDetail", checkAdminToken, getCustomerBasicDetail)
 router.post("/getCustomerProfileDetail", checkAdminToken, getCustomerProfileDetail)
 router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMatchPreferencesDetail)
+// router.post("/getCustomerMatchGroup", checkAdminToken, getCustomerMatchGroup)
+// router.post("/getCustomerMatchGroupWithValue", checkAdminToken, getCustomerMatchGroupWithValue)
 
 
 router.post("/upload",checkAdminToken, FileUpload.single("file"), uploadFile);
@@ -182,6 +193,15 @@ router.post('/SubmissionFormById',checkAdminToken, getSubmissionFormById);
 router.post('/updateSubmissionForm',checkAdminToken, updateSubmissionForm);
 
 
+router.post("/createMatchGroup", checkAdminToken, createMatchGroup);
+router.post("/updateMatchGroupName", checkAdminToken, updateMatchGroupName);
+router.post("/deleteMatchGroup", checkAdminToken, deleteMatchGroup);
+router.get("/getAllMatchGroups", checkAdminToken, getAllMatchGroups);
+router.post("/createMatchGroupValue", checkAdminToken, createMatchGroupValue);
+// router.post("/updateMatchGroupValue", checkAdminToken, updateMatchGroupValue);
+// router.post("/deleteMatchGroupValue", checkAdminToken, deleteMatchGroupValue);
+// router.get("/getMatchGroupValues", checkAdminToken, getMatchGroupValues);
+
 
 
 router.get("/clientsAddedToday", getClientsAddedToday)
@@ -190,9 +210,9 @@ router.post("/fromFieldList", getAllFieldsList)
 router.post("/addCustomer", addCustomer)
 // router.post("/updateCustomer", updateCustomer)
 
-router.route('/getFromGroupList').get(form_group_List);
-router.route('/clientSubmissions').get(getClientSubmissions);
-router.route('/recentlySubmittedClients').get(getRecentlySubmittedClients);
+// router.route('/getFromGroupList').get(form_group_List);
+// router.route('/clientSubmissions').get(getClientSubmissions);
+// router.route('/recentlySubmittedClients').get(getRecentlySubmittedClients);
 
 
 module.exports = router;
