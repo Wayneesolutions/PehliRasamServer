@@ -2257,31 +2257,51 @@ exports.getMatchGroupDetails = async (req, res) => {
       });
     }
 
+    const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+    // Get all groups
     const allGroups = await MatchGroup.find({ isDeleted: false });
 
-    const allValues = await MatchGroupValue.find({
-      isDeleted: false,
-      customerId: customerId
-    }).populate("matchCustomerId");
+    // Check if any values exist for this customer
+    const customerValuesExist = await MatchGroupValue.exists({
+      customerId: customerObjectId,
+      isDeleted: false
+    });
 
+    let allValues = [];
+
+    // Get all values if customer has any
+    if (customerValuesExist) {
+      allValues = await MatchGroupValue.find({
+        customerId: customerObjectId,
+        isDeleted: false
+      }).populate("matchCustomerId");
+    }
+
+    // Combine groups + their values
     const results = allGroups.map(group => {
-      // filter values that belong to this group
       const groupValues = allValues.filter(val => val.matchGroupId.toString() === group._id.toString());
-
-      // map values if found, else return placeholder
-      const values = groupValues.length > 0
-        ? groupValues.map(val => ({
-            valueId: val._id,
-            matchCustomerId: val.matchCustomerId?._id || null,
-            matchCustomerName: val.matchCustomerId?.name || "Unknown",
-            matchingDescription: val.matchingDescription || ""
-          }))
-        : [{ valueId: null, matchCustomerId: null, matchCustomerName: "NaN", matchingDescription: "" }];
 
       return {
         groupId: group._id,
         groupName: group.groupName,
-        values: values
+        count: groupValues.length,
+        values: groupValues.map(val => {
+          const customer = val.matchCustomerId || {};
+
+          return {
+            valueId: val._id,
+            matchCustomerId: customer._id || null,
+            firstName: customer.firstName || "N/A",
+            middleName: customer.middelName || "",
+            lastName: customer.lastName || "N/A",
+            number: customer.Number || null,
+            email: customer.email || "N/A",
+            imagePath: customer.imagePath || null,
+            address: customer.address || {},
+            matchingDescription: val.matchingDescription || ""
+          };
+        })
       };
     });
 
@@ -2299,6 +2319,45 @@ exports.getMatchGroupDetails = async (req, res) => {
     });
   }
 };
+
+exports.searchCustomerByName = async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || name.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid name to search"
+      });
+    }
+
+    const regex = new RegExp(name.trim(), 'i'); // Case-insensitive regex match
+
+    const customers = await Customer.find({
+      isDeleted: false,
+      $or: [
+        { firstName: regex },
+        { middelName: regex },
+        { lastName: regex }
+      ]
+    }).select('firstName middelName lastName email Number imagePath');
+
+    res.status(200).json({
+      success: true,
+      message: "Customers fetched successfully",
+      data: customers
+    });
+
+  } catch (error) {
+    console.error("Error in searchCustomerByName:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
 
 
 

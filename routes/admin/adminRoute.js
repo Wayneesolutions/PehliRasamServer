@@ -44,6 +44,8 @@ const {
   getCustomerProfileDetail,
   getCustomerMatchPreferencesDetail,
 
+  getMatchGroupDetails,
+
 
   uploadFile,
 
@@ -61,6 +63,7 @@ const {
   changePreferencesFieldGroup,
   deletePreferencesField,
   getAllPreferencesGroupFields,
+  searchCustomerByName,
 
   submissionForm,
   getSubmissionFormById,
@@ -175,8 +178,8 @@ router.get("/allActiveCustomer", checkAdminToken, allActiveCustomer)
 router.post("/getCustomerBasicDetail", checkAdminToken, getCustomerBasicDetail)
 router.post("/getCustomerProfileDetail", checkAdminToken, getCustomerProfileDetail)
 router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMatchPreferencesDetail)
-// router.post("/getCustomerMatchGroup", checkAdminToken, getCustomerMatchGroup)
-// router.post("/getCustomerMatchGroupWithValue", checkAdminToken, getCustomerMatchGroupWithValue)
+router.post("/getMatchGroupDetails", checkAdminToken, getMatchGroupDetails)
+router.post("/searchCustomerByName", checkAdminToken, searchCustomerByName)
 
 
 router.post("/upload",checkAdminToken, FileUpload.single("file"), uploadFile);
