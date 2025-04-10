@@ -7,7 +7,7 @@ const formFieldSchema = new mongoose.Schema({
   },
   attributeType: {
     type: String,
-    enum: ["text", "select", "number", "date", "radio", "checkbox"],
+    enum: ["text", "select", "number", "date", "radio", "checkbox", "Image"],
     required: true,
   },
   attributeStatus: {

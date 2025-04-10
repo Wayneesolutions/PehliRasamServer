@@ -581,7 +581,7 @@ exports.allGroupFieldList = async (req, res) => {
       },
       {
         $lookup: {
-          from: "formfields", // Ensure this matches your actual collection name
+          from: "formfields",
           localField: "_id",
           foreignField: "form_group_id",
           as: "fields"
@@ -590,13 +590,21 @@ exports.allGroupFieldList = async (req, res) => {
       {
         $unwind: {
           path: "$fields",
-          preserveNullAndEmptyArrays: true // Ensures groups without fields still appear
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { "fields.isDeleted": { $exists: false } }, // not present
+            { "fields.isDeleted": false } // explicitly false
+          ]
         }
       },
       {
         $group: {
           _id: "$_id",
-          groupName: { $first: "$name" }, // Form group name
+          groupName: { $first: "$name" },
           fields: {
             $push: {
               attributeId: "$fields._id",
@@ -610,21 +618,24 @@ exports.allGroupFieldList = async (req, res) => {
         }
       },
       {
-        $sort: { "groupName": 1 } // Sort groups alphabetically
+        $sort: { "groupName": 1 }
       }
     ]);
 
     res.status(200).json({
+      success: true,
       message: "Form groups with their fields retrieved successfully.",
       data: groupFieldList
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       message: "An error occurred while retrieving form groups and fields.",
       error: error.message
     });
   }
 };
+
 
 
 ///
@@ -1274,10 +1285,18 @@ exports.getCustomerBasicDetail = async (req, res) => {
       });
     }
 
+    const clientLists = await ClientList.find({
+      customers: customerId,
+      isDeleted: false
+    }).select("_id listName color").lean();
+
     res.status(200).json({
       success: true,
       message: "Customer details retrieved successfully",
-      data: customer,
+      data: {
+        ...customer,
+        clientLists
+      }
     });
 
   } catch (error) {
