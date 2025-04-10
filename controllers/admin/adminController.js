@@ -3,6 +3,7 @@ const { validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+const fs = require('fs');
 const FormGroup = require("../../models/customer/clientAttributes/FormGroup")
 const FormField = require("../../models/customer/clientAttributes/FormField")
 const FormFieldsValue = require("../../models/customer/clientAttributes/FromFieldValue")
@@ -686,13 +687,21 @@ exports.uploadFile = async (req, res) => {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    // Upload file to Azure Blob Storage
-    const fileUrl = await uploadFile(req.file);
+    let fileUrl;
+
+    if (process.env.NODE_ENV === 'development') {
+      // Build full URL using BASE_URL
+      const baseUrl = process.env.BASE_URL || 'http://localhost:8098';
+      fileUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
+    } else {
+      // Upload to Azure
+      fileUrl = await uploadToAzure(req.file);
+    }
 
     res.status(200).json({
       success: true,
-      message: "File uploaded successfully to Azure Blob Storage",
-      fileUrl: fileUrl,
+      message: "File uploaded successfully",
+      fileUrl,
     });
 
   } catch (error) {
@@ -704,6 +713,7 @@ exports.uploadFile = async (req, res) => {
     });
   }
 };
+
 
 // exports.uploadFile = async (req, res) => {
 //   try {
@@ -768,7 +778,7 @@ exports.addCustomerByAdmin = async (req, res) => {
           firstName,
           lastName,
           email,
-          activeStatus: activeStatus ?? false,
+          activeStatus: activeStatus ?? true,
           createdBy: req.id,
           // updatedBy: req.user.id
       });
@@ -1899,6 +1909,45 @@ exports.getAllPreferencesGroupFields = async (req, res) => {
   }
 };
 
+exports.addCustomerPhoto = async (req, res) => {
+  try {
+    const { customerId, url } = req.body;
+
+    if (!customerId || !url) {
+      return res.status(400).json({
+        success: false,
+        message: 'customerId and url are required',
+      });
+    }
+
+    const updatedCustomer = await Customer.findOneAndUpdate(
+      { _id: customerId, isDeleted: false },
+      { $addToSet: { photos: { url } } }, // only adds if the exact { url } doesn't exist
+      { new: true }
+    );
+
+    if (!updatedCustomer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Photo added (if not already present)',
+      photos: updatedCustomer.photos,
+    });
+
+  } catch (error) {
+    console.error('Error adding photo:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message,
+    });
+  }
+};
 
 
 /////
@@ -2358,8 +2407,79 @@ exports.searchCustomerByName = async (req, res) => {
   }
 };
 
+exports.addCustomerToClientList = async (req, res) => {
+  try {
+    const { clientListId, customerId } = req.body;
+    const adminId = req.id; // Assumes user auth middleware sets this
 
+    if (!clientListId || !customerId) {
+      return res.status(400).json({ message: "clientListId and customerId are required." });
+    }
 
+    const clientList = await ClientList.findById(clientListId);
+
+    if (!clientList || clientList.isDeleted) {
+      return res.status(404).json({ message: "Client list not found or has been deleted." });
+    }
+
+    const alreadyExists = clientList.customers.includes(customerId);
+
+    if (alreadyExists) {
+      return res.status(409).json({ message: "Customer is already in the list." });
+    }
+
+    clientList.customers.push(customerId);
+    clientList.updatedBy = adminId;
+
+    await clientList.save();
+
+    res.status(200).json({
+      message: "Customer added to the client list successfully.",
+      data: clientList
+    });
+
+  } catch (error) {
+    console.error("Error adding customer to client list:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+exports.removeCustomerFromClientList = async (req, res) => {
+  try {
+    const { clientListId, customerId } = req.body;
+    const adminId = req.id; // Assumes authentication middleware sets this
+
+    if (!clientListId || !customerId) {
+      return res.status(400).json({ success: false, message: "clientListId and customerId are required." });
+    }
+
+    const clientList = await ClientList.findById(clientListId);
+
+    if (!clientList || clientList.isDeleted) {
+      return res.status(404).json({ success: false, message: "Client list not found or has been deleted." });
+    }
+
+    const index = clientList.customers.indexOf(customerId);
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: "Customer not found in this client list." });
+    }
+
+    clientList.customers.splice(index, 1);
+    clientList.updatedBy = adminId;
+
+    await clientList.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Customer removed from the client list successfully.",
+      data: clientList
+    });
+
+  } catch (error) {
+    console.error("Error removing customer from client list:", error);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
 
 
 /////////////////////////    //////////////////////////

@@ -43,6 +43,11 @@ const customerSchema = new mongoose.Schema({
         trim: true, 
         default: null // Store the image URL or file path
     },
+    photos: [
+        {
+            url: { type: String, trim: true }
+        }
+    ],
     address: { 
         street: { type: String, trim: true, default: null },  // Street address, including unit/apartment number
         city: { type: String, trim: true, default: null },  // City/Town

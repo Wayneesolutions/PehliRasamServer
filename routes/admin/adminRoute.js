@@ -33,12 +33,12 @@ const {
   createFieldType,
   getAllFieldTypeList,
 
-  addCustomerByAdmin,
+  addCustomerByAdmin, //
   fetchCustomerFieldGroups,
   fetchPreferencesFieldGroups,
-  updateCustomerBasicDetail,
-  updateCustomerProfile,
-  updateCustomerMatchPreferences,
+  updateCustomerBasicDetail, //
+  updateCustomerProfile, //
+  updateCustomerMatchPreferences, //
   allActiveCustomer,
   getCustomerBasicDetail,
   getCustomerProfileDetail,
@@ -53,6 +53,8 @@ const {
   getAllClientLists,
   editClientList,
   removeClientList,
+  addCustomerToClientList,
+  removeCustomerFromClientList,
 
   createPreferencesGroup,
   updatePreferencesGroup,
@@ -65,7 +67,7 @@ const {
   getAllPreferencesGroupFields,
   searchCustomerByName,
 
-  submissionForm,
+  submissionForm, //
   getSubmissionFormById,
   updateSubmissionForm,
 
@@ -86,7 +88,8 @@ const {
   createMatchGroupValue,
   // updateMatchGroupValue,
   // deleteMatchGroupValue,
-  // getMatchGroupValues
+  // getMatchGroupValues,
+  addCustomerPhoto
 } = require('../../controllers/admin/adminController');
 
 
@@ -180,6 +183,11 @@ router.post("/getCustomerProfileDetail", checkAdminToken, getCustomerProfileDeta
 router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMatchPreferencesDetail)
 router.post("/getMatchGroupDetails", checkAdminToken, getMatchGroupDetails)
 router.post("/searchCustomerByName", checkAdminToken, searchCustomerByName)
+router.post("/addCustomerPhoto", checkAdminToken, addCustomerPhoto)
+
+
+router.post("/addCustomerToClientList", checkAdminToken, addCustomerToClientList)
+router.post("/removeCustomerFromClientList", checkAdminToken, removeCustomerFromClientList)
 
 
 router.post("/upload",checkAdminToken, FileUpload.single("file"), uploadFile);
@@ -215,7 +223,7 @@ router.post("/addCustomer", addCustomer)
 
 // router.route('/getFromGroupList').get(form_group_List);
 // router.route('/clientSubmissions').get(getClientSubmissions);
-// router.route('/recentlySubmittedClients').get(getRecentlySubmittedClients);
+router.route('/recentlySubmittedClients').get(getRecentlySubmittedClients);
 
 
 module.exports = router;

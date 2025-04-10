@@ -28,7 +28,11 @@ const clientListSchema = new mongoose.Schema({
   updatedBy: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "User" 
-  }
+  },
+  customers: [{ 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "Customer" 
+  }]
 }, { timestamps: true });
 
 const ClientList = mongoose.model("ClientList", clientListSchema);
