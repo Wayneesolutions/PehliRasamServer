@@ -29,14 +29,14 @@ const customerSchema = new mongoose.Schema({
     },
     email: { 
         type: String, 
-        required: true, 
+        // required: true, 
         unique: true, 
         trim: true, 
         match: [/^\S+@\S+\.\S+$/, "Invalid email format"] 
     },
     activeStatus: { 
         type: Boolean, 
-        default: false 
+        default: true 
     },
     imagePath: { 
         type: String, 

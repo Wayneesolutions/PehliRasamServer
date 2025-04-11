@@ -45,6 +45,7 @@ const {
   getCustomerMatchPreferencesDetail,
 
   getMatchGroupDetails,
+  getMatchingSuggestions,
 
 
   uploadFile,
@@ -212,6 +213,9 @@ router.post("/createMatchGroupValue", checkAdminToken, createMatchGroupValue);
 // router.post("/updateMatchGroupValue", checkAdminToken, updateMatchGroupValue);
 // router.post("/deleteMatchGroupValue", checkAdminToken, deleteMatchGroupValue);
 // router.get("/getMatchGroupValues", checkAdminToken, getMatchGroupValues);
+
+
+router.post("/matchingSuggestions", checkAdminToken, getMatchingSuggestions);
 
 
 

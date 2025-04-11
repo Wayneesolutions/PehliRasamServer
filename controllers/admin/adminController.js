@@ -768,33 +768,34 @@ exports.addCustomerByAdmin = async (req, res) => {
   try {
       const { firstName, lastName, email, activeStatus } = req.body;
 
-      // Ensure req.user.id is available
       if (!req.id) {
           return res.status(401).json({ success: false, message: "Unauthorized request." });
       }
 
-      // Validate required fields
-      if (!firstName || !lastName || !email) {
-          return res.status(400).json({ success: false, message: "All required fields must be provided." });
+      if (!firstName || !lastName) {
+          return res.status(400).json({ success: false, message: "First name and last name are required." });
       }
 
-      // Check if the email already exists
-      const existingCustomer = await Customer.findOne({ email });
-      if (existingCustomer) {
-          return res.status(400).json({ success: false, message: "Email already exists." });
+      if (email) {
+          const existingCustomer = await Customer.findOne({ email });
+          if (existingCustomer) {
+              return res.status(400).json({ success: false, message: "Email already exists." });
+          }
       }
 
-      // Create new customer
-      const newCustomer = new Customer({
+      const newCustomerData = {
           firstName,
           lastName,
-          email,
           activeStatus: activeStatus ?? true,
           createdBy: req.id,
-          // updatedBy: req.user.id
-      });
+      };
 
-      // Save to database
+      if (email) {
+          newCustomerData.email = email;
+      }
+
+      const newCustomer = new Customer(newCustomerData);
+
       await newCustomer.save();
 
       return res.status(201).json({ success: true, message: "Customer created successfully.", data: newCustomer });
@@ -1275,7 +1276,7 @@ exports.getCustomerBasicDetail = async (req, res) => {
     }
 
     const customer = await Customer.findOne({ _id: customerId, isDeleted: false })
-      .select("firstName lastName email contact address imagePath createdAt updatedAt")
+      .select("firstName lastName email contact address imagePath photos createdAt updatedAt")
       .lean();
 
     if (!customer) {
@@ -1328,6 +1329,8 @@ exports.getCustomerProfileDetail = async (req, res) => {
 
       const values = await FormFieldsValue.find({ customerId });
 
+      console.log("values:::::::::", values)
+
       const dynamicFields = groups
           .map(group => {
               const groupFields = fields.filter(field => field.form_group_id.toString() === group._id.toString());
@@ -1339,6 +1342,8 @@ exports.getCustomerProfileDetail = async (req, res) => {
                   groupName: group.name,
                   fields: groupFields.map(field => {
                       const fieldValue = values.find(val => val.fieldId.toString() === field._id.toString());
+
+                      console.log("fieldValue:::::::::::::", fieldValue)
 
                       return {
                           fieldId: field._id,
@@ -2500,6 +2505,98 @@ exports.removeCustomerFromClientList = async (req, res) => {
   }
 };
 
+exports.getMatchingSuggestions = async (req, res) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({ success: false, message: "Invalid or missing Customer ID" });
+    }
+
+    // STEP 1: Get current user's preferences
+    const preferencesValues = await PreferencesFieldsValue.find({ customerId });
+    const preferencesFields = await PreferencesFields.find({ isActive: true, isDeleted: false });
+
+    const preferenceMap = {};
+    preferencesValues.forEach(pref => {
+      preferenceMap[pref.preferencesFieldId.toString()] = pref.value;
+    });
+
+    // STEP 2: Get other customers
+    const otherCustomers = await Customer.find({ _id: { $ne: customerId }, isDeleted: false, activeStatus: true });
+
+    const matches = [];
+
+    for (const customer of otherCustomers) {
+      const profileFields = await FormFieldsValue.find({ customerId: customer._id });
+      const profileFieldMap = {};
+      profileFields.forEach(f => {
+        profileFieldMap[f.fieldId.toString()] = f.value;
+      });
+
+      const matchDetails = [];
+      let totalWeight = 0;
+      let matchScore = 0;
+      let dealBreaker = false;
+
+      for (const prefField of preferencesFields) {
+        const prefValue = preferenceMap[prefField._id.toString()];
+        if (!prefValue) continue;
+
+        // Find matching profile value
+        const profileVal = profileFieldMap[prefField.profileField];
+
+        const isMatch = Array.isArray(prefValue)
+          ? prefValue.includes(profileVal)
+          : prefValue === profileVal;
+
+        if (isMatch) {
+          if (prefField.weight === "High") matchScore += 3;
+          else if (prefField.weight === "Medium") matchScore += 2;
+          else matchScore += 1;
+        } else if (prefField.dealBreak) {
+          dealBreaker = true;
+          break;
+        }
+
+        // Calculate total weight regardless of match
+        if (prefField.weight === "High") totalWeight += 3;
+        else if (prefField.weight === "Medium") totalWeight += 2;
+        else totalWeight += 1;
+
+        matchDetails.push({
+          label: prefField.label,
+          preference: prefValue,
+          actual: profileVal,
+          weight: prefField.weight,
+          matched: isMatch
+        });
+      }
+
+      if (!dealBreaker && totalWeight > 0) {
+        matches.push({
+          customer,
+          matchPercentage: Math.round((matchScore / totalWeight) * 100),
+          matchDetails
+        });
+      }
+    }
+
+    matches.sort((a, b) => b.matchPercentage - a.matchPercentage);
+
+    res.status(200).json({
+      success: true,
+      message: "Matching suggestions retrieved successfully.",
+      data: matches
+    });
+
+  } catch (error) {
+    console.error("Error in matching suggestion:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+};
+
+
 
 /////////////////////////    //////////////////////////
 
@@ -2734,7 +2831,7 @@ exports.addCustomer = async (req, res) =>{
                 groupId: new mongoose.Types.ObjectId(groupId),    // Converting to ObjectId
                 fieldId: new mongoose.Types.ObjectId(filedID),    // Converting to ObjectId
                 value: filedValue,
-                customeId: new mongoose.Types.ObjectId(customerId) // Converting to ObjectId
+                customerId: new mongoose.Types.ObjectId(customerId) // Converting to ObjectId
             });
         }
     }
