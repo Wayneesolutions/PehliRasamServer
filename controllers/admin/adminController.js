@@ -26,6 +26,8 @@ const PreferencesFieldsValue = require("../../models/customer/preferencesAttribu
 const { preferencesGroupSchema, preferencesFieldSchema, updatePreferencesFieldSchema } = require("../../validations/preferencesValidation");
 const MatchGroup = require("../../models/customer/matchGroupsAttributes/matchGroupsModel");
 const MatchGroupValue = require("../../models/customer/matchGroupsAttributes/matchGroupsValueModel");
+const EmailTemplate = require('../../models/customer/mail/emailTemplate');
+const MailLog = require('../../models/customer/mail/mailLog');
 
 
 
@@ -700,9 +702,9 @@ exports.uploadFile = async (req, res) => {
 
     let fileUrl;
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'production') {
       // Build full URL using BASE_URL
-      const baseUrl = process.env.BASE_URL || 'http://localhost:8098';
+      const baseUrl = process.env.PROD_URL || 'http://localhost:8098';
       fileUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
     } else {
       // Upload to Azure
@@ -2593,6 +2595,100 @@ exports.getMatchingSuggestions = async (req, res) => {
   } catch (error) {
     console.error("Error in matching suggestion:", error);
     res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+  }
+};
+
+exports.createEmailTemplate = async (req, res) => {
+  try {
+      const { name, subject, body } = req.body;
+
+      // Validation
+      if (!name || !subject || !body) {
+          return res.status(400).json({ message: 'Name, subject, and body are required.' });
+      }
+
+      const template = new EmailTemplate({
+          name: name.trim(),
+          subject: subject.trim(),
+          body,
+          createdBy: req.id || null // Optional, based on your auth setup
+      });
+
+      await template.save();
+
+      return res.status(201).json({ message: 'Template created successfully.', template });
+  } catch (error) {
+      console.error('Create Email Template Error:', error);
+      return res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+exports.getAllEmailTemplates = async (req, res) => {
+  try {
+      const templates = await EmailTemplate.find({ isDeleted: false }).sort({ createdAt: -1 });
+
+      return res.status(200).json({ templates });
+  } catch (error) {
+      console.error('Get All Email Templates Error:', error);
+      return res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+exports.deleteEmailTemplate = async (req, res) => {
+  try {
+      const { id } = req.body;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+          return res.status(400).json({ message: 'Invalid template ID.' });
+      }
+
+      const deleted = await EmailTemplate.findByIdAndUpdate(id, { isDeleted: true }, { new: true });
+
+      if (!deleted) {
+          return res.status(404).json({ message: 'Template not found.' });
+      }
+
+      return res.status(200).json({ message: 'Template deleted successfully.' });
+  } catch (error) {
+      console.error('Delete Email Template Error:', error);
+      return res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+exports.updateEmailTemplate = async (req, res) => {
+  try {
+      const { id, name, subject, body } = req.body;
+
+      // Validate input
+      if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+          return res.status(400).json({ message: 'Valid template ID is required.' });
+      }
+
+      if (!name || !subject || !body) {
+          return res.status(400).json({ message: 'Name, subject, and body are required.' });
+      }
+
+      const updatedTemplate = await EmailTemplate.findOneAndUpdate(
+          { _id: id, isDeleted: false },
+          {
+              name: name.trim(),
+              subject: subject.trim(),
+              body
+          },
+          { new: true }
+      );
+
+      if (!updatedTemplate) {
+          return res.status(404).json({ message: 'Template not found or already deleted.' });
+      }
+
+      return res.status(200).json({
+          message: 'Template updated successfully.',
+          template: updatedTemplate
+      });
+  } catch (error) {
+      console.error('Update Email Template Error:', error);
+      return res.status(500).json({ message: 'Internal server error.' });
   }
 };
 

@@ -90,7 +90,12 @@ const {
   // updateMatchGroupValue,
   // deleteMatchGroupValue,
   // getMatchGroupValues,
-  addCustomerPhoto
+  addCustomerPhoto,
+
+  createEmailTemplate,
+  getAllEmailTemplates,
+  deleteEmailTemplate,
+  updateEmailTemplate
 } = require('../../controllers/admin/adminController');
 
 
@@ -217,6 +222,11 @@ router.post("/createMatchGroupValue", checkAdminToken, createMatchGroupValue);
 
 router.post("/matchingSuggestions", checkAdminToken, getMatchingSuggestions);
 
+router.post("/createEmailTemplate", checkAdminToken, createEmailTemplate)
+router.get("/getAllEmailTemplates", checkAdminToken, getAllEmailTemplates)
+router.post("/deleteEmailTemplate", checkAdminToken, deleteEmailTemplate)
+router.post("/updateEmailTemplate", checkAdminToken, updateEmailTemplate)
+
 
 
 router.get("/clientsAddedToday", getClientsAddedToday)
@@ -226,7 +236,7 @@ router.post("/addCustomer", addCustomer)
 // router.post("/updateCustomer", updateCustomer)
 
 // router.route('/getFromGroupList').get(form_group_List);
-// router.route('/clientSubmissions').get(getClientSubmissions);
+router.route('/clientSubmissions').get(getClientSubmissions);
 router.route('/recentlySubmittedClients').get(getRecentlySubmittedClients);
 
 
