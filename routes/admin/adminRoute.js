@@ -95,7 +95,7 @@ const {
   createEmailTemplate,
   getAllEmailTemplates,
   deleteEmailTemplate,
-  updateEmailTemplate
+  updateEmailTemplate,
 } = require('../../controllers/admin/adminController');
 
 

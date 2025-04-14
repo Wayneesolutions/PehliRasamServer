@@ -262,3 +262,102 @@ exports.SubmissionFormDetail = async (req, res) => {
       res.status(500).json({ error: error.message || "Internal server error." });
     }
   };
+
+exports.findPotentialMatches = async (req, res) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId || !mongoose.Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or missing Customer ID"
+      });
+    }
+
+    const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+    // Step 1: Get gender of current user
+    const genderFieldValue = await FormFieldsValue.findOne({ customerId: customerObjectId });
+
+    if (!genderFieldValue || !genderFieldValue.value) {
+      return res.status(400).json({
+        success: false,
+        message: "Gender not found for this customer"
+      });
+    }
+
+    const gender = genderFieldValue.value.toLowerCase();
+    const oppositeGender = gender === "male" ? "female" : "male";
+
+    // Step 2: Get all customerIds of opposite gender
+    const oppositeGenderIds = await FormFieldsValue.find({
+      value: new RegExp(`^${oppositeGender}$`, "i")
+    }).distinct("customerId");
+
+    if (!oppositeGenderIds.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No users found with opposite gender"
+      });
+    }
+
+    // Step 3: Get all necessary data
+    const groups = await FormGroup.find({ isDeleted: false, isActive: true });
+    const fields = await FormField.find({ isDeleted: false, isActive: true });
+
+    const allValues = await FormFieldsValue.find({ customerId: { $in: oppositeGenderIds } });
+
+    // Step 4: Build response for each opposite gender customer
+    const oppositeUsers = await Customer.find({ _id: { $in: oppositeGenderIds } });
+
+    const results = oppositeUsers.map(user => {
+      const customerId = user._id.toString();
+      const userValues = allValues.filter(val => val.customerId.toString() === customerId);
+
+      const dynamicFields = groups.map(group => {
+        const groupFields = fields.filter(field => field.form_group_id.toString() === group._id.toString());
+
+        if (groupFields.length === 0) return null;
+
+        return {
+          groupId: group._id,
+          groupName: group.name,
+          fields: groupFields.map(field => {
+            const fieldValue = userValues.find(val => val.fieldId.toString() === field._id.toString());
+            return {
+              fieldId: field._id,
+              fieldName: field.attributeName,
+              attributeType: field.attributeType,
+              attributeOption: field.attributeOption,
+              value: fieldValue ? fieldValue.value : "NaN"
+            };
+          })
+        };
+      }).filter(Boolean);
+
+      return {
+        customerId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        imagePath: user.imagePath,
+        dynamicFields
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Opposite gender profiles retrieved successfully",
+      data: results
+    });
+
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
+  
