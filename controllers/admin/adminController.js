@@ -699,12 +699,12 @@ exports.uploadFile = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
-
+console.log("process.env.PROD_URL::::::::::", process.env.PROD_URL)
     let fileUrl;
 
     if (process.env.NODE_ENV === 'production') {
       // Build full URL using BASE_URL
-      const baseUrl = process.env.PROD_URL || 'http://localhost:8098';
+      const baseUrl = process.env.BASE_URL || 'http://localhost:8098';
       fileUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
     } else {
       // Upload to Azure
