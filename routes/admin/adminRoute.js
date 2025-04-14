@@ -104,35 +104,21 @@ const {
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/tiff', 'image/jpg'];
   if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
+    cb(null, true);
   } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, TIFF, and JPG files are allowed.'), false);
+    cb(new Error('Invalid file type. Only JPEG, PNG, TIFF, and JPG allowed.'), false);
   }
 };
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-      const uploadPath = path.join(__dirname, '../../uploads');
-      // Create directory if it doesn't exist
-      if (!fs.existsSync(uploadPath)) {
-          fs.mkdirSync(uploadPath, { recursive: true });
-      }
-      cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-      cb(null, Date.now() + '-' + file.originalname);
-  }
-});
 
-const upload = multer({ 
-    storage: storage,
-    fileFilter: fileFilter
-});
+// Use memory storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage, fileFilter });
 
 router.post("/adminCreation", create_admin);
 router.post("/adminLogin", login_admin);
 router.post("/updateAdminPermission", checkAdminToken, updatePermission);
 router.post("/updateAdminNotification", checkAdminToken, updateNotification);
-router.post("/updateAdminBasicDetails", checkAdminToken, upload.single('profilePic'), updateBasicDetails);
+router.post("/updateAdminBasicDetails", checkAdminToken, updateBasicDetails);
 router.post("/adminDetail", checkAdminToken, getAdminDetail);
 router.get("/adminList", checkAdminToken, getAdminList);
 router.post("/deleteAdmin", checkAdminToken, deactiveAdmin);
@@ -196,7 +182,7 @@ router.post("/addCustomerToClientList", checkAdminToken, addCustomerToClientList
 router.post("/removeCustomerFromClientList", checkAdminToken, removeCustomerFromClientList)
 
 
-router.post("/upload",checkAdminToken, FileUpload.single("file"), uploadFile);
+router.post("/upload",checkAdminToken, upload.single("file"), uploadFile);
 
 
 router.post("/createClientList", checkAdminToken, createClientList)

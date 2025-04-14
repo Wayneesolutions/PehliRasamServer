@@ -17,7 +17,7 @@ const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
 const { formFieldSchema, formGroupSchema } = require("../../validations/formValidation");
 const { updateCustomerSchema } = require("../../validations/customerValidation");
-const { uploadFile } = require("../../services/azureBlobService");
+const uploadToAzure = require("../../services/azureBlobService");
 const getImageUrl = require('../../utils/getImageUrl');
 const SubmissionForm = require("../../models/customer/submissionForm/submissionForm");
 const PreferencesGroup = require("../../models/customer/preferencesAttributes/preferencesGroup");
@@ -699,29 +699,19 @@ exports.uploadFile = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
-console.log("process.env.PROD_URL::::::::::", process.env.PROD_URL)
-    let fileUrl;
 
-    if (process.env.NODE_ENV === 'production') {
-      // Build full URL using BASE_URL
-      const baseUrl = process.env.BASE_URL || 'http://localhost:8098';
-      fileUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
-    } else {
-      // Upload to Azure
-      fileUrl = await uploadToAzure(req.file);
-    }
+    const fileUrl = await uploadToAzure(req.file);
 
     res.status(200).json({
       success: true,
       message: "File uploaded successfully",
       fileUrl,
     });
-
   } catch (error) {
     console.error("Upload Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to upload file",
+      message: "File upload failed",
       error: error.message,
     });
   }
