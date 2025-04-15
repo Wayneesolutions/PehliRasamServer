@@ -6,6 +6,7 @@ const updateCustomerSchema = Joi.object({
     middelName: Joi.string().min(3).max(50).trim().allow(null, ''), // Optional
     lastName: Joi.string().min(3).max(50).trim(),
     email: Joi.string().trim().email().lowercase(),
+    Number: Joi.string().optional(),
     activeStatus: Joi.boolean(),
     imagePath: Joi.string().trim().uri().allow(null, ''), // URL validation
     address: Joi.object({

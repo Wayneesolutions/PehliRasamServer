@@ -28,6 +28,7 @@ const MatchGroup = require("../../models/customer/matchGroupsAttributes/matchGro
 const MatchGroupValue = require("../../models/customer/matchGroupsAttributes/matchGroupsValueModel");
 const EmailTemplate = require('../../models/customer/mail/emailTemplate');
 const MailLog = require('../../models/customer/mail/mailLog');
+const sendEmail = require('../../utils/sendEmail');
 
 
 
@@ -2396,15 +2397,24 @@ exports.searchCustomerByName = async (req, res) => {
       });
     }
 
-    const regex = new RegExp(name.trim(), 'i'); // Case-insensitive regex match
+    const searchWords = name.trim().split(/\s+/); // Split by spaces, handles "manish   prasad"
 
+    // Create conditions for each word to match any part of the name
+    const nameConditions = searchWords.map(word => {
+      const regex = new RegExp(word, 'i');
+      return {
+        $or: [
+          { firstName: regex },
+          { middelName: regex },
+          { lastName: regex }
+        ]
+      };
+    });
+
+    // Combine all word conditions with AND
     const customers = await Customer.find({
       isDeleted: false,
-      $or: [
-        { firstName: regex },
-        { middelName: regex },
-        { lastName: regex }
-      ]
+      $and: nameConditions
     }).select('firstName middelName lastName email Number imagePath');
 
     res.status(200).json({
@@ -2682,6 +2692,110 @@ exports.updateEmailTemplate = async (req, res) => {
   }
 };
 
+
+exports.sendCustomerMail = async (req, res) => {
+    try {
+        const { customerId, subject, body, attachments = [], meetingDetails = null } = req.body;
+        const adminId = req.id;
+
+        if (!customerId || !subject || !body) {
+            return res.status(400).json({ message: 'customerId, subject, and body are required.' });
+        }
+
+        // Fetch the customer
+        const customer = await Customer.findById(customerId);
+        if (!customer || !customer.email) {
+            return res.status(404).json({ message: 'Customer not found or missing email.' });
+        }
+
+        const emailResponse = await sendEmail({
+            to: customer.email,
+            subject,
+            text: body.replace(/<[^>]*>/g, ''), // Strip HTML for plain text
+            html: body,
+            attachments,
+        });
+
+        const mailLog = new MailLog({
+          customer: customer._id,
+          subject,
+          body,
+          sentBy: adminId,
+          sentByEmail: process.env.SENDGRID_FROM_EMAIL, // or get it from logged-in admin if dynamic
+          deliveryStatus: emailResponse.success ? 'Sent' : 'Failed',
+          meetingDetails,
+          attachments: attachments.map(att => ({
+            fileName: att.filename || '',
+            fileUrl: att.content ? 'Base64' : att.url || '',
+          }))
+        });
+
+        await mailLog.save();
+
+        return res.status(200).json({
+            message: emailResponse.success ? 'Email sent and logged successfully.' : 'Failed to send email but log created.',
+            mailLog,
+            sendStatus: emailResponse.success
+        });
+    } catch (error) {
+        console.error('Send Customer Mail Error:', error);
+        return res.status(500).json({ message: 'Internal server error.', error });
+    }
+};
+
+exports.getMailLogs = async (req, res) => {
+  try {
+    const { search } = req.body;
+    let logs = [];
+
+    if (search && search.trim().length > 0) {
+      const regex = new RegExp(search.trim(), 'i');
+
+      // Find matching customers
+      const matchedCustomers = await Customer.find({
+        $or: [
+          { firstName: regex },
+          { lastName: regex },
+          { email: regex }
+        ]
+      }).select('_id');
+
+      const customerIds = matchedCustomers.map(c => c._id);
+
+      // Find logs where:
+      // - customer is in matched customers OR
+      // - subject matches the search
+      logs = await MailLog.find({
+        $or: [
+          { customer: { $in: customerIds } },
+          { subject: regex }
+        ]
+      })
+        .populate('customer', 'email firstName lastName')
+        .sort({ sentAt: -1 });
+    } else {
+      // No search: get all logs
+      logs = await MailLog.find()
+        .populate('customer', 'email firstName lastName')
+        .sort({ sentAt: -1 });
+    }
+
+    const result = logs.map(log => ({
+      to: log.customer?.email || 'N/A',
+      customerName: `${log.customer?.firstName || ''} ${log.customer?.lastName || ''}`.trim(),
+      from: log.sentByEmail,
+      subject: log.subject,
+      body: log.body,
+      time: log.sentAt,
+      status: log.deliveryStatus
+    }));
+
+    return res.status(200).json({ count: result.length, logs: result });
+  } catch (error) {
+    console.error('Get/Search Mail Logs Error:', error);
+    return res.status(500).json({ message: 'Internal server error.' });
+  }
+};
 
 
 /////////////////////////    //////////////////////////

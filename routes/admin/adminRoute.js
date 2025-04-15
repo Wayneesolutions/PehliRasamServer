@@ -96,6 +96,9 @@ const {
   getAllEmailTemplates,
   deleteEmailTemplate,
   updateEmailTemplate,
+  sendCustomerMail,
+  getMailLogs,
+  // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
 
@@ -212,6 +215,11 @@ router.post("/createEmailTemplate", checkAdminToken, createEmailTemplate)
 router.get("/getAllEmailTemplates", checkAdminToken, getAllEmailTemplates)
 router.post("/deleteEmailTemplate", checkAdminToken, deleteEmailTemplate)
 router.post("/updateEmailTemplate", checkAdminToken, updateEmailTemplate)
+
+
+router.post("/sendCustomerMail", checkAdminToken, sendCustomerMail)
+router.post("/mailLogs", checkAdminToken, getMailLogs)
+// router.get("/searchMailLogs", checkAdminToken, searchMailLogs)
 
 
 

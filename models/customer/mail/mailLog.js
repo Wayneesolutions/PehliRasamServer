@@ -24,6 +24,12 @@ const mailLogSchema = new mongoose.Schema({
         ref: 'Admin',
         required: true
     },
+    sentByEmail: {
+        type: String,
+        trim: true,
+        // required: true,
+        match: [/^\S+@\S+\.\S+$/, 'Invalid email format']
+    },
     deliveryStatus: {
         type: String,
         enum: ['Pending', 'Sent', 'Failed'],
