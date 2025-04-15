@@ -192,7 +192,7 @@ router.post("/removeClientList", checkAdminToken, removeClientList)
 
 
 router.post('/createSubmissionForm',checkAdminToken, submissionForm);
-router.post('/SubmissionFormById',checkAdminToken, getSubmissionFormById);
+router.post('/SubmissionFormById', getSubmissionFormById);
 router.post('/updateSubmissionForm',checkAdminToken, updateSubmissionForm);
 
 
