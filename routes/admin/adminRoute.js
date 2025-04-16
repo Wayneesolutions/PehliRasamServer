@@ -97,7 +97,8 @@ const {
   updateEmailTemplate,
   sendCustomerMail,
   getMailLogs,
-  getTodayStatsCount
+  getTodayStatsCount,
+  getCustomerCountLastFiveDays
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -225,6 +226,8 @@ router.post("/mailLogs", checkAdminToken, getMailLogs)
 
 router.get("/getTodayStatsCount",checkAdminToken, getTodayStatsCount)
 router.get("/getRecentlySubmittedClients",checkAdminToken, getRecentlySubmittedClients)
+router.get("/getCustomerCountLastFiveDays",checkAdminToken, getCustomerCountLastFiveDays)
+
 router.post("/matchingUsers", getMatchingUsers)
 router.post("/fromFieldList", getAllFieldsList)
 router.post("/addCustomer", addCustomer)

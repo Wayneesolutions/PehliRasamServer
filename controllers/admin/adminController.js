@@ -3,6 +3,7 @@ const { validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+const moment = require('moment');
 const fs = require('fs');
 const FormGroup = require("../../models/customer/clientAttributes/FormGroup")
 const FormField = require("../../models/customer/clientAttributes/FormField")
@@ -2783,7 +2784,6 @@ exports.updateEmailTemplate = async (req, res) => {
 };
 
 
-
 exports.sendCustomerMail = async (req, res) => {
     try {
         const { customerId, subject, body, attachments = [], meetingDetails = null } = req.body;
@@ -2919,6 +2919,56 @@ exports.getTodayStatsCount = async (req, res) => {
   }
 };
 
+
+exports.getCustomerCountLastFiveDays = async (req, res) => {
+  try {
+    const today = moment().startOf('day');
+    const fiveDaysAgo = moment().subtract(4, 'days').startOf('day');
+
+    const counts = await Customer.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          createdAt: {
+            $gte: fiveDaysAgo.toDate(),
+            $lte: moment().endOf('day').toDate()
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { _id: -1 }
+      }
+    ]);
+
+    // Ensure all 5 days are included, even with 0
+    const result = [];
+    for (let i = 0; i < 5; i++) {
+      const date = today.clone().subtract(i, 'days').format('YYYY-MM-DD');
+      const found = counts.find(c => c._id === date);
+      result.push({
+        date,
+        count: found ? found.count : 0
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Customer count for last 5 days fetched successfully.',
+      data: result.reverse() // To show from oldest to newest
+    });
+  } catch (error) {
+    console.error('Error fetching customer count:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
 
 /////////////////////////    //////////////////////////
 
