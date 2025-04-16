@@ -87,8 +87,8 @@ const {
   deleteMatchGroup,
   getAllMatchGroups,
   createMatchGroupValue,
-  // updateMatchGroupValue,
-  // deleteMatchGroupValue,
+  updateMatchGroupValue,
+  deleteMatchGroupValue,
   // getMatchGroupValues,
   addCustomerPhoto,
 
@@ -204,8 +204,8 @@ router.post("/updateMatchGroupName", checkAdminToken, updateMatchGroupName);
 router.post("/deleteMatchGroup", checkAdminToken, deleteMatchGroup);
 router.get("/getAllMatchGroups", checkAdminToken, getAllMatchGroups);
 router.post("/createMatchGroupValue", checkAdminToken, createMatchGroupValue);
-// router.post("/updateMatchGroupValue", checkAdminToken, updateMatchGroupValue);
-// router.post("/deleteMatchGroupValue", checkAdminToken, deleteMatchGroupValue);
+router.post("/updateMatchGroupValue", checkAdminToken, updateMatchGroupValue);
+router.post("/deleteMatchGroupValue", checkAdminToken, deleteMatchGroupValue);
 // router.get("/getMatchGroupValues", checkAdminToken, getMatchGroupValues);
 
 

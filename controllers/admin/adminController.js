@@ -928,7 +928,7 @@ exports.updateCustomerBasicDetail = async (req, res) => {
 
       // Check if the email already exists (excluding the current customer)
       if (updateData.email) {
-          const existingCustomer = await Customer.findOne({
+          const existingCustomer = await CustsendCustomerMailomer.findOne({
               email: updateData.email,
               _id: { $ne: customerId }
           });
@@ -1269,7 +1269,7 @@ exports.getCustomerBasicDetail = async (req, res) => {
     }
 
     const customer = await Customer.findOne({ _id: customerId, isDeleted: false })
-      .select("firstName lastName email contact address imagePath photos createdAt updatedAt")
+      .select("firstName middelName lastName email Number contact address imagePath photos createdAt updatedAt")
       .lean();
 
     if (!customer) {
@@ -2383,6 +2383,81 @@ exports.getMatchGroupDetails = async (req, res) => {
       message: "Internal Server Error",
       error: error.message
     });
+  }
+};
+
+exports.updateMatchGroupValue = async (req, res) => {
+  try {
+    const { id, matchGroupId, customerId, matchCustomerId, matchingDescription } = req.body;
+    const editedBy = req.id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "MatchGroupValue ID is required in the body.",
+      });
+    }
+
+    const existing = await MatchGroupValue.findById(id);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: "MatchGroupValue not found.",
+      });
+    }
+
+    if (matchGroupId !== undefined) existing.matchGroupId = matchGroupId;
+    if (customerId !== undefined) existing.customerId = customerId;
+    if (matchCustomerId !== undefined) existing.matchCustomerId = matchCustomerId;
+    if (matchingDescription !== undefined) existing.matchingDescription = matchingDescription;
+    existing.editedBy = editedBy;
+
+    const updated = await existing.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Match group value updated successfully.",
+      data: updated,
+    });
+  } catch (err) {
+    console.error("Error updating match group value:", err);
+    res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+exports.deleteMatchGroupValue = async (req, res) => {
+  try {
+    const { id } = req.body;
+    const editedBy = req.id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "MatchGroupValue ID is required in the body.",
+      });
+    }
+
+    const matchGroupValue = await MatchGroupValue.findById(id);
+    if (!matchGroupValue || matchGroupValue.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "MatchGroupValue not found or already deleted.",
+      });
+    }
+
+    matchGroupValue.isDeleted = true;
+    matchGroupValue.editedBy = editedBy;
+
+    const deleted = await matchGroupValue.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Match group value deleted (soft) successfully.",
+      data: deleted,
+    });
+  } catch (err) {
+    console.error("Error deleting match group value:", err);
+    res.status(500).json({ success: false, message: "Server error." });
   }
 };
 
