@@ -2691,7 +2691,11 @@ exports.createEmailTemplate = async (req, res) => {
 
     await template.save();
 
-    return res.status(201).json({ message: 'Template created successfully.', template });
+    return res.status(201).json({
+      success: true,
+      message: 'Template created successfully.',
+      data: template
+    });
   } catch (error) {
     console.error('Create Email Template Error:', error);
     return res.status(500).json({ message: 'Internal server error.' });
@@ -2702,7 +2706,11 @@ exports.getAllEmailTemplates = async (req, res) => {
   try {
       const templates = await EmailTemplate.find({ isDeleted: false }).sort({ createdAt: -1 });
 
-      return res.status(200).json({ templates });
+      return res.status(200).json({
+        success: true,
+        message: 'Templates fetched successfully.',
+        data: templates
+      });
   } catch (error) {
       console.error('Get All Email Templates Error:', error);
       return res.status(500).json({ message: 'Internal server error.' });
@@ -2723,7 +2731,11 @@ exports.deleteEmailTemplate = async (req, res) => {
           return res.status(404).json({ message: 'Template not found.' });
       }
 
-      return res.status(200).json({ message: 'Template deleted successfully.' });
+      return res.status(200).json({
+        success: true,
+        message: 'Template deleted successfully.',
+        data: deleted
+      });
   } catch (error) {
       console.error('Delete Email Template Error:', error);
       return res.status(500).json({ message: 'Internal server error.' });
@@ -2760,8 +2772,9 @@ exports.updateEmailTemplate = async (req, res) => {
     }
 
     return res.status(200).json({
+      success: true,
       message: 'Template updated successfully.',
-      template: updatedTemplate
+      data: updatedTemplate
     });
   } catch (error) {
     console.error('Update Email Template Error:', error);
@@ -2871,6 +2884,37 @@ exports.getMailLogs = async (req, res) => {
     return res.status(200).json({ count: result.length, logs: result });
   } catch (error) {
     console.error('Get/Search Mail Logs Error:', error);
+    return res.status(500).json({ message: 'Internal server error.' });
+  }
+};
+
+exports.getTodayStatsCount = async (req, res) => {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Count customers added today
+    const customerCount = await Customer.countDocuments({
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+      isDeleted: false
+    });
+
+    // Count mails sent today
+    const mailCount = await MailLog.countDocuments({
+      sentAt: { $gte: startOfDay, $lte: endOfDay }
+    });
+
+    return res.status(200).json({
+      message: 'Today\'s counts fetched successfully.',
+      customersAddedToday: customerCount,
+      mailsSentToday: mailCount,
+      EventsToday: 0
+    });
+  } catch (error) {
+    console.error('Error fetching today\'s counts:', error);
     return res.status(500).json({ message: 'Internal server error.' });
   }
 };

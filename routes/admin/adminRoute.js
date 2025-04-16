@@ -75,7 +75,6 @@ const {
   form_group_List,
   getClientSubmissions,
   getRecentlySubmittedClients,
-  getClientsAddedToday,
   getMatchingUsers,
   getCustomerProfile,
   getAllFieldsList,
@@ -98,6 +97,7 @@ const {
   updateEmailTemplate,
   sendCustomerMail,
   getMailLogs,
+  getTodayStatsCount
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -223,11 +223,12 @@ router.post("/mailLogs", checkAdminToken, getMailLogs)
 
 
 
-router.get("/clientsAddedToday", getClientsAddedToday)
+router.get("/getTodayStatsCount",checkAdminToken, getTodayStatsCount)
+router.get("/getRecentlySubmittedClients",checkAdminToken, getRecentlySubmittedClients)
 router.post("/matchingUsers", getMatchingUsers)
 router.post("/fromFieldList", getAllFieldsList)
 router.post("/addCustomer", addCustomer)
-// router.post("/updateCustomer", updateCustomer)
+// router.post("/updateCustomer", updateCustomer)getTodayStatsCount
 
 // router.route('/getFromGroupList').get(form_group_List);
 router.route('/clientSubmissions').get(getClientSubmissions);
