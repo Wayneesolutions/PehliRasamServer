@@ -2910,9 +2910,11 @@ exports.getTodayStatsCount = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Today\'s counts fetched successfully.',
-      customersAddedToday: customerCount,
-      mailsSentToday: mailCount,
-      EventsToday: 0
+      data: {
+        customersAddedToday: customerCount,
+        mailsSentToday: mailCount,
+        EventsToday: 0
+      }
     });
   } catch (error) {
     console.error('Error fetching today\'s counts:', error);
