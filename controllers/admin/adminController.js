@@ -2675,26 +2675,26 @@ exports.getMatchingSuggestions = async (req, res) => {
 
 exports.createEmailTemplate = async (req, res) => {
   try {
-      const { name, subject, body } = req.body;
+    const { name, subject, body } = req.body;
 
-      // Validation
-      if (!name || !subject || !body) {
-          return res.status(400).json({ message: 'Name, subject, and body are required.' });
-      }
+    // Validation (only subject and body are required now)
+    if (!subject || !body) {
+      return res.status(400).json({ message: 'Subject and body are required.' });
+    }
 
-      const template = new EmailTemplate({
-          name: name.trim(),
-          subject: subject.trim(),
-          body,
-          createdBy: req.id || null // Optional, based on your auth setup
-      });
+    const template = new EmailTemplate({
+      name: name ? name.trim() : undefined, // Optional trimming if provided
+      subject: subject.trim(),
+      body,
+      createdBy: req.id || null // Optional, based on your auth setup
+    });
 
-      await template.save();
+    await template.save();
 
-      return res.status(201).json({ message: 'Template created successfully.', template });
+    return res.status(201).json({ message: 'Template created successfully.', template });
   } catch (error) {
-      console.error('Create Email Template Error:', error);
-      return res.status(500).json({ message: 'Internal server error.' });
+    console.error('Create Email Template Error:', error);
+    return res.status(500).json({ message: 'Internal server error.' });
   }
 };
 
@@ -2732,40 +2732,43 @@ exports.deleteEmailTemplate = async (req, res) => {
 
 exports.updateEmailTemplate = async (req, res) => {
   try {
-      const { id, name, subject, body } = req.body;
+    const { id, name, subject, body } = req.body;
 
-      // Validate input
-      if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-          return res.status(400).json({ message: 'Valid template ID is required.' });
-      }
+    // Validate ID
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Valid template ID is required.' });
+    }
 
-      if (!name || !subject || !body) {
-          return res.status(400).json({ message: 'Name, subject, and body are required.' });
-      }
+    // Build update object with only provided fields
+    const updateFields = {};
+    if (name) updateFields.name = name.trim();
+    if (subject) updateFields.subject = subject.trim();
+    if (body) updateFields.body = body;
 
-      const updatedTemplate = await EmailTemplate.findOneAndUpdate(
-          { _id: id, isDeleted: false },
-          {
-              name: name.trim(),
-              subject: subject.trim(),
-              body
-          },
-          { new: true }
-      );
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ message: 'At least one field (name, subject, or body) must be provided to update.' });
+    }
 
-      if (!updatedTemplate) {
-          return res.status(404).json({ message: 'Template not found or already deleted.' });
-      }
+    const updatedTemplate = await EmailTemplate.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      updateFields,
+      { new: true }
+    );
 
-      return res.status(200).json({
-          message: 'Template updated successfully.',
-          template: updatedTemplate
-      });
+    if (!updatedTemplate) {
+      return res.status(404).json({ message: 'Template not found or already deleted.' });
+    }
+
+    return res.status(200).json({
+      message: 'Template updated successfully.',
+      template: updatedTemplate
+    });
   } catch (error) {
-      console.error('Update Email Template Error:', error);
-      return res.status(500).json({ message: 'Internal server error.' });
+    console.error('Update Email Template Error:', error);
+    return res.status(500).json({ message: 'Internal server error.' });
   }
 };
+
 
 
 exports.sendCustomerMail = async (req, res) => {

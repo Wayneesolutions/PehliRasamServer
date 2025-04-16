@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const emailTemplateSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true,
+        // required: true,
         trim: true,
     },
     subject: {
