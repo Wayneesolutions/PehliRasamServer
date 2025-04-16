@@ -95,6 +95,7 @@ const {
   getAllEmailTemplates,
   deleteEmailTemplate,
   updateEmailTemplate,
+  getEmailTemplateById,
   sendCustomerMail,
   getMailLogs,
   getTodayStatsCount,
@@ -216,6 +217,7 @@ router.post("/createEmailTemplate", checkAdminToken, createEmailTemplate)
 router.get("/getAllEmailTemplates", checkAdminToken, getAllEmailTemplates)
 router.post("/deleteEmailTemplate", checkAdminToken, deleteEmailTemplate)
 router.post("/updateEmailTemplate", checkAdminToken, updateEmailTemplate)
+router.post("/getEmailTemplateById", checkAdminToken, getEmailTemplateById)
 
 
 router.post("/sendCustomerMail", checkAdminToken, sendCustomerMail)

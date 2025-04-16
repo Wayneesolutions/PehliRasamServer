@@ -2783,6 +2783,43 @@ exports.updateEmailTemplate = async (req, res) => {
   }
 };
 
+exports.getEmailTemplateById = async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    // Check if ID is provided and valid
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid template ID is required.'
+      });
+    }
+
+    // Find the template
+    const template = await EmailTemplate.findOne({ _id: id, isDeleted: false });
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: 'Template not found.'
+      });
+    }
+
+    // Respond with success
+    return res.status(200).json({
+      success: true,
+      message: 'Email template fetched successfully.',
+      data: template
+    });
+  } catch (error) {
+    console.error('Get Email Template by ID Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error.',
+      error: error.message
+    });
+  }
+};
 
 exports.sendCustomerMail = async (req, res) => {
     try {
@@ -2812,7 +2849,7 @@ exports.sendCustomerMail = async (req, res) => {
           subject,
           body,
           sentBy: adminId,
-          sentByEmail: process.env.SENDGRID_FROM_EMAIL, // or get it from logged-in admin if dynamic
+          sentByEmail: process.env.SENDGRID_FROM_EMAIL, 
           deliveryStatus: emailResponse.success ? 'Sent' : 'Failed',
           meetingDetails,
           attachments: attachments.map(att => ({
@@ -2824,9 +2861,13 @@ exports.sendCustomerMail = async (req, res) => {
         await mailLog.save();
 
         return res.status(200).json({
-            message: emailResponse.success ? 'Email sent and logged successfully.' : 'Failed to send email but log created.',
-            mailLog,
-            sendStatus: emailResponse.success
+            // success: true,
+            // message: emailResponse.success ? 'Email sent and logged successfully.' : 'Failed to send email but log created.',
+            // mailLog,
+            // sendStatus: emailResponse.success
+            success: true,
+            message: 'Email Sent successfully.',
+            // data: template
         });
     } catch (error) {
         console.error('Send Customer Mail Error:', error);
