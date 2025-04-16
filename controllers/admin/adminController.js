@@ -1432,7 +1432,7 @@ exports.allActiveCustomer = async (req, res) => {
   try {
     const customers = await Customer.find(
       { activeStatus: true, isDeleted: false },
-      { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1 }
+      { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1 }
     );
 
     if (!customers.length) {

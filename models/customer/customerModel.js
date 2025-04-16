@@ -23,13 +23,14 @@ const customerSchema = new mongoose.Schema({
         trim: true 
     },
     Number: { 
-        type: Number, 
+        type: Number,
+        Default: null 
         // required: true, 
         // trim: true 
     },
     email: { 
         type: String, 
-        // required: true, 
+        Default: null,
         unique: true, 
         trim: true, 
         match: [/^\S+@\S+\.\S+$/, "Invalid email format"] 
@@ -56,7 +57,7 @@ const customerSchema = new mongoose.Schema({
             type: String, 
             trim: true, 
             // required: true, 
-            match: [/^[A-Z]{2,3}$/, "Invalid country code"],
+            // match: [/^[A-Z]{2,3}$/, "Invalid country code"],
             Default: null
         },
         postalCode: { 
