@@ -928,7 +928,7 @@ exports.updateCustomerBasicDetail = async (req, res) => {
 
       // Check if the email already exists (excluding the current customer)
       if (updateData.email) {
-          const existingCustomer = await CustsendCustomerMailomer.findOne({
+          const existingCustomer = await Customer.findOne({
               email: updateData.email,
               _id: { $ne: customerId }
           });
