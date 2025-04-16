@@ -2908,6 +2908,7 @@ exports.getTodayStatsCount = async (req, res) => {
     });
 
     return res.status(200).json({
+      success: true,
       message: 'Today\'s counts fetched successfully.',
       customersAddedToday: customerCount,
       mailsSentToday: mailCount,
@@ -2997,13 +2998,24 @@ exports.form_group_List = async (req, res) => {
 
 exports.getRecentlySubmittedClients = async (req, res) => {
   try {
-      const clients = await Customer.aggregate([
-          { $sort: { createdAt: -1 } },
-          { $limit: 10 }
-      ]);
-      res.json(clients);
+    const clients = await Customer.aggregate([
+      { $match: { isDeleted: false } }, // Skip deleted customers
+      { $sort: { createdAt: -1 } },
+      { $limit: 10 }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Recently submitted clients fetched successfully.',
+      data: clients
+    });
   } catch (error) {
-      res.status(500).json({ message: 'Error fetching recently submitted clients', error: error.message });
+    console.error('Error fetching recently submitted clients:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch recently submitted clients.',
+      error: error.message
+    });
   }
 };
 
