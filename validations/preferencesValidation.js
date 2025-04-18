@@ -27,7 +27,7 @@ const preferencesFieldSchema = Joi.object({
   choices: Joi.array().items(Joi.string()).optional().messages({
     "array.base": "Choices must be an array of strings",
   }),
-  helpText: Joi.string().trim().optional().messages({
+  helpText: Joi.string().trim().optional().allow("").messages({
     "string.base": "Help text must be a string",
   }),
   dealBreak: Joi.boolean().default(false).messages({
@@ -63,7 +63,7 @@ const updatePreferencesFieldSchema = Joi.object({
   choices: Joi.array().items(Joi.string()).optional().messages({
     "array.base": "Choices must be an array of strings",
   }),
-  helpText: Joi.string().trim().optional().messages({
+  helpText: Joi.string().trim().optional().allow("").messages({
     "string.base": "Help text must be a string",
   }),
   dealBreak: Joi.boolean().optional().messages({
