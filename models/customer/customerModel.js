@@ -99,7 +99,7 @@ const customerSchema = new mongoose.Schema({
             },
             default: null
         },
-        stateOrProvince: { type: String, trim: true, default: null },  // State, province, or region
+        state: { type: String, trim: true, default: null },  // State, province, or region
         country: { 
             type: String, 
             trim: true, 

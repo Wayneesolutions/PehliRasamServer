@@ -43,7 +43,7 @@ const submissionFormSchema = new mongoose.Schema({
   address: { 
       street: { type: String, trim: true, default: null },  // Street address, including unit/apartment number
       city: { type: String, trim: true, default: null },  // City/Town
-      stateOrProvince: { type: String, trim: true, default: null },  // State, province, or region
+      state: { type: String, trim: true, default: null },  // State, province, or region
       country: { 
           type: String, 
           trim: true, 

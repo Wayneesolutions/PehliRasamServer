@@ -2086,7 +2086,7 @@ exports.getSubmissionFormById = async (req, res) => {
       email: submissionForm.BasicDetail?.email || null,
       address: {
         city: address.city || null,
-        stateOrProvince: address.stateOrProvince || null,
+        state: address.state || null,
         country: address.country || null,
         postalCode: address.postalCode || null,
         cityOptions: allowedCities

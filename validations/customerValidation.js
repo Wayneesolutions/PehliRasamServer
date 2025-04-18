@@ -12,7 +12,7 @@ const updateCustomerSchema = Joi.object({
     address: Joi.object({
         street: Joi.string().trim().allow(null, ''),
         city: Joi.string().trim().allow(null, ''),
-        stateOrProvince: Joi.string().trim().allow(null, ''),
+        state: Joi.string().trim().allow(null, ''),
         country: Joi.string().optional(),
         postalCode: Joi.string().trim().allow(null, '')
     }).allow(null),
