@@ -187,7 +187,7 @@ router.post("/addCustomerToClientList", checkAdminToken, addCustomerToClientList
 router.post("/removeCustomerFromClientList", checkAdminToken, removeCustomerFromClientList)
 
 
-router.post("/upload",checkAdminToken, upload.single("file"), uploadFile);
+router.post("/upload", upload.single("file"), uploadFile);
 
 
 router.post("/createClientList", checkAdminToken, createClientList)
