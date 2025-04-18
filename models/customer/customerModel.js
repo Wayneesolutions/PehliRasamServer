@@ -1,5 +1,44 @@
 const mongoose = require('mongoose');
 
+
+const allowedCities = [
+    "Amritsar",
+    "Barnala",
+    "Bathinda",
+    "Dera Bassi",
+    "Delhi",
+    "Chandigarh",
+    "Faridkot",
+    "Fatehgarh Sahib",
+    "Firozpur",
+    "Gurdaspur",
+    "Gujarat",
+    "Hoshiarpur",
+    "Himachal Pradesh",
+    "Haryana",
+    "Jalandhar",
+    "Jammu and Kashmir",
+    "Kapurthala",
+    "Khanna",
+    "Ludhiana",
+    "Mansa",
+    "Moga",
+    "Muktsar(Sri Muktsar Sahib)",
+    "Nakodar",
+    "Patiala",
+    "Phagwara",
+    "Rupnagar",
+    "Rajasthan",
+    "(Mohali)Sahibzada Ajit Singh Nagar",
+    "Sangrur",
+    "(Nawanshahr)Shahid Bhagat Singh Nagar",
+    "Tarn Taran",
+    "Uttarakhand",
+    "Uttar Pradesh",
+    "Zirakpur"
+  ];
+  
+
 const customerSchema = new mongoose.Schema({
     firstName: { 
         type: String, 
@@ -51,7 +90,15 @@ const customerSchema = new mongoose.Schema({
     ],
     address: { 
         street: { type: String, trim: true, default: null },  // Street address, including unit/apartment number
-        city: { type: String, trim: true, default: null },  // City/Town
+        city: { 
+            type: String, 
+            trim: true, 
+            enum: {
+                values: allowedCities,
+                message: '{VALUE} is not an allowed city'
+            },
+            default: null
+        },
         stateOrProvince: { type: String, trim: true, default: null },  // State, province, or region
         country: { 
             type: String, 

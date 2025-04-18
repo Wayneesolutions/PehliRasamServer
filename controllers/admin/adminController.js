@@ -2067,14 +2067,30 @@ exports.getSubmissionFormById = async (req, res) => {
       return res.status(404).json({ error: "Submission Form not found." });
     }
 
-    // Extract BasicDetail fields manually
+    const allowedCities = [
+      "Amritsar", "Barnala", "Bathinda", "Dera Bassi", "Delhi", "Chandigarh", "Faridkot",
+      "Fatehgarh Sahib", "Firozpur", "Gurdaspur", "Gujarat", "Hoshiarpur", "Himachal Pradesh",
+      "Haryana", "Jalandhar", "Jammu and Kashmir", "Kapurthala", "Khanna", "Ludhiana", "Mansa",
+      "Moga", "Muktsar(Sri Muktsar Sahib)", "Nakodar", "Patiala", "Phagwara", "Rupnagar",
+      "Rajasthan", "(Mohali)Sahibzada Ajit Singh Nagar", "Sangrur",
+      "(Nawanshahr)Shahid Bhagat Singh Nagar", "Tarn Taran", "Uttarakhand", "Uttar Pradesh", "Zirakpur"
+    ];
+
+    const address = submissionForm.BasicDetail?.address || {};
+
     const BasicDetail = {
       firstName: submissionForm.BasicDetail?.firstName || null,
-      middleName: submissionForm.BasicDetail?.middelName || null, // typo in schema - "middelName"
+      middleName: submissionForm.BasicDetail?.middelName || null, // Schema typo respected
       lastName: submissionForm.BasicDetail?.lastName || null,
       Number: submissionForm.BasicDetail?.Number || null,
       email: submissionForm.BasicDetail?.email || null,
-      address: submissionForm.BasicDetail?.address || {}
+      address: {
+        city: address.city || null,
+        stateOrProvince: address.stateOrProvince || null,
+        country: address.country || null,
+        postalCode: address.postalCode || null,
+        cityOptions: allowedCities
+      }
     };
 
     res.status(200).json({
@@ -2087,6 +2103,7 @@ exports.getSubmissionFormById = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 exports.updateSubmissionForm = async (req, res) => {
   try {
