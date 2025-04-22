@@ -34,11 +34,19 @@ app.use(helmet({
   crossOriginOpenerPolicy: process.env.NODE_ENV === 'production'
 }));
 
+// app.use(cors({
+//   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization']
+// }));
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: [
+    'http://pehlirasam.wayneesolutions.com',
+    'http://74.225.250.224'
+  ],
+  credentials: true // only if you’re using cookies or auth headers
 }));
 
 // Security attack prevention
