@@ -41,13 +41,8 @@ app.use(helmet({
 //   allowedHeaders: ['Content-Type', 'Authorization']
 // }));
 
-app.use(cors({
-  origin: [
-    'http://pehlirasam.wayneesolutions.com',
-    'http://74.225.250.224'
-  ],
-  credentials: true // only if you’re using cookies or auth headers
-}));
+app.use(cors())
+
 
 // Security attack prevention
 app.use(hpp()); // prevent HTTP Parameter Pollution
