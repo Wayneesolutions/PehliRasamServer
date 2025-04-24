@@ -4,38 +4,25 @@ const activityLogSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Customer",
+    required: true,
   },
-  actionType: {
-    type: String,
-    enum: ["Created", "Updated", "Deleted", "Viewed", "Matched"],
-  },
-  sourceModel: {
-    type: String, // e.g., "Customer", "FormFieldsValue", "PreferencesFieldsValue"
-  },
-  sourceField: {
-    type: String, // Specific field name that changed, if any
-  },
-  previousValue: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  newValue: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  description: {
-    type: String,
-    default: ""
-  },
-  changedBy: {
+  performedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    refPath: "changedByModel",
+    ref: "admin",
+    // required: true,
   },
-  changedByModel: {
+  // sendBy: {
+  //   type: String,
+  //   default: "admin",
+  //   // required: true,
+  // },
+  action: {
     type: String,
-    enum: ["Admin", "Customer"],
+    required: true,
   },
-  timestamp: {
-    type: Date,
-    default: Date.now,
+  changeSummary: {
+    type: String,
+    default: "",
   }
 }, { timestamps: true });
 

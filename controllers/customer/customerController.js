@@ -188,6 +188,7 @@ exports.SubmissionFormDetail = async (req, res) => {
   
       const customerData = {
         ...BasicDetail,
+        activeStatus: false
         // createdBy,
       };
   

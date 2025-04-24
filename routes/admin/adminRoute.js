@@ -36,9 +36,9 @@ const {
   addCustomerByAdmin, //
   fetchCustomerFieldGroups,
   fetchPreferencesFieldGroups,
-  updateCustomerBasicDetail, //
-  updateCustomerProfile, //
-  updateCustomerMatchPreferences, //
+  updateCustomerBasicDetail, //. add log
+  updateCustomerProfile, // add log
+  updateCustomerMatchPreferences, // add log
   allActiveCustomer,
   getCustomerBasicDetail,
   getCustomerProfileDetail,
@@ -96,10 +96,12 @@ const {
   deleteEmailTemplate,
   updateEmailTemplate,
   getEmailTemplateById,
-  sendCustomerMail,
+  sendCustomerMail, //add log
   getMailLogs,
   getTodayStatsCount,
-  getCustomerCountLastFiveDays
+  getCustomerCountLastFiveDays,
+  getActivityLogs,
+  getMonthlyActivitySummary,
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -234,6 +236,10 @@ router.post("/matchingUsers", getMatchingUsers)
 router.post("/fromFieldList", getAllFieldsList)
 router.post("/addCustomer", addCustomer)
 // router.post("/updateCustomer", updateCustomer)getTodayStatsCount
+
+
+router.post("/getActivityLogs", checkAdminToken, getActivityLogs)
+router.post("/getMonthlyActivitySummary", checkAdminToken, getMonthlyActivitySummary)
 
 // router.route('/getFromGroupList').get(form_group_List);
 router.route('/clientSubmissions').get(getClientSubmissions);

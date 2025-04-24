@@ -30,6 +30,7 @@ const MatchGroupValue = require("../../models/customer/matchGroupsAttributes/mat
 const EmailTemplate = require('../../models/customer/mail/emailTemplate');
 const MailLog = require('../../models/customer/mail/mailLog');
 const sendEmail = require('../../utils/sendEmail');
+const ActivityLog = require("../../models/customer/activityLog");
 
 
 
@@ -950,7 +951,21 @@ exports.updateCustomerBasicDetail = async (req, res) => {
           return res.status(404).json({ success: false, message: "Customer not found" });
       }
 
-      res.status(200).json({ success: true, message: "Customer updated successfully", customer });
+
+      let adminname = await Admin.findById(req.id).select("firstName lastName");
+      let changeSummary = `Customer ${customer.firstName} ${customer.lastName} updated "${Object.keys(updateData)}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+      await ActivityLog.create({
+        customerId: customerId,
+        performedBy: req.id,
+        action: `${Object.keys(updateData)} Update`,
+        changeSummary: changeSummary
+      });
+
+      res.status(200).json({ 
+        success: true, 
+        message: "Customer updated successfully",
+        customer
+       });
 
   } catch (error) {
       console.error("Error updating customer:", error.message);
@@ -978,6 +993,7 @@ exports.updateCustomerProfile = async (req, res) => {
         message: 'Customer not found or has been deleted'
       });
     }
+    const fieldIdForLog = [];
 
     if (profileValue && Array.isArray(profileValue) && profileValue.length > 0) {
       await FormFieldsValue.deleteMany({ customerId });
@@ -1011,11 +1027,34 @@ exports.updateCustomerProfile = async (req, res) => {
             customerId: new mongoose.Types.ObjectId(customerId),
             updatedBy
           });
+          fieldIdForLog.push({
+            fieldId: new mongoose.Types.ObjectId(fieldID),
+          });
         }
       }
 
       await FormFieldsValue.insertMany(insertData);
     }
+
+
+    const fieldIds = fieldIdForLog.map(item => item.fieldId);
+
+    const attributeNames = await FormField.find({
+      _id: { $in: fieldIds }
+    }).select("attributeName -_id"); // Only include attributeName, exclude _id
+    
+    const fieldIdValue = attributeNames.map(item => item.attributeName);
+
+    console.log(fieldIdValue[0])
+    let adminname = await Admin.findById(req.id).select("firstName lastName");
+    let changeSummary = `Customer ${customer.firstName} ${customer.lastName} updated "${fieldIdValue[0]}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+    await ActivityLog.create({
+      customerId: customerId,
+      performedBy: req.id,
+      action: `${Object.keys(fieldIdValue)} Update`,
+      changeSummary: changeSummary
+    });
+
 
     res.status(200).json({
       success: true,
@@ -1054,6 +1093,8 @@ exports.updateCustomerMatchPreferences = async (req, res) => {
           });
       }
 
+      let fieldIdForLog = []
+
       if (matchPreferences && Array.isArray(matchPreferences) && matchPreferences.length > 0) {
           await PreferencesFieldsValue.deleteMany({ customerId });
 
@@ -1076,11 +1117,36 @@ exports.updateCustomerMatchPreferences = async (req, res) => {
                       customerId: new mongoose.Types.ObjectId(customerId),
                       updatedBy: new mongoose.Types.ObjectId(updatedBy)
                   });
+                  fieldIdForLog.push({
+                    preferencesFieldId: new mongoose.Types.ObjectId(fieldId),
+                  });
               }
           }
 
           await PreferencesFieldsValue.insertMany(insertData);
+
       }
+
+
+      const fieldIds = fieldIdForLog.map(item => item.preferencesFieldId);
+
+      console.log("fieldIds::::::", fieldIds)
+
+      const attributeNames = await PreferencesFields.find({
+        _id: { $in: fieldIds }
+      }).select("profileField -_id"); // Only include attributeName, exclude _id
+      
+      const fieldIdValue = attributeNames.map(item => item.profileField);
+  
+      console.log(fieldIdValue)
+      let adminname = await Admin.findById(req.id).select("firstName lastName");
+      let changeSummary = `Customer ${customer.firstName} ${customer.lastName} updated "${fieldIdValue[0]}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+      await ActivityLog.create({
+        customerId: customerId,
+        performedBy: req.id,
+        action: `${Object.keys(fieldIdValue)} Update`,
+        changeSummary: changeSummary
+      });
 
       res.status(200).json({
           success: true,
@@ -3058,22 +3124,55 @@ exports.form_group_List = async (req, res) => {
 
 exports.getRecentlySubmittedClients = async (req, res) => {
   try {
-    const clients = await Customer.aggregate([
-      { $match: { isDeleted: false } }, // Skip deleted customers
-      { $sort: { createdAt: -1 } },
-      { $limit: 10 }
-    ]);
+    const { name } = req.body;
 
-    return res.status(200).json({
+    if (!name || name.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid name to search"
+      });
+    }
+
+    let customers;
+
+    if (name.trim().toLowerCase() === "all") {
+      // Return all non-deleted, inactive customers
+      customers = await Customer.find({
+        isDeleted: false,
+        activeStatus: false
+      });
+    } else {
+      const searchWords = name.trim().split(/\s+/);
+
+      const nameConditions = searchWords.map(word => {
+        const regex = new RegExp(word, 'i');
+        return {
+          $or: [
+            { firstName: regex },
+            { middelName: regex },
+            { lastName: regex }
+          ]
+        };
+      });
+
+      customers = await Customer.find({
+        isDeleted: false,
+        activeStatus: false,
+        $and: nameConditions
+      });
+    }
+
+    res.status(200).json({
       success: true,
-      message: 'Recently submitted clients fetched successfully.',
-      data: clients
+      message: "Customers fetched successfully",
+      data: customers
     });
+
   } catch (error) {
-    console.error('Error fetching recently submitted clients:', error);
-    return res.status(500).json({
+    console.error("Error in getRecentlySubmittedClients:", error);
+    res.status(500).json({
       success: false,
-      message: 'Failed to fetch recently submitted clients.',
+      message: "Internal server error",
       error: error.message
     });
   }
@@ -3081,7 +3180,7 @@ exports.getRecentlySubmittedClients = async (req, res) => {
 
 exports.getClientSubmissions = async (req, res) => {
     try {
-        const count = await Customer.countDocuments();
+        const count = await Customer.countDocuments({activeStatus: true});
         res.json({ totalSubmissions: count });
     } catch (error) {
         res.status(500).json({ message: 'Error fetching client submissions count', error: error.message });
@@ -3298,3 +3397,163 @@ exports.addCustomer = async (req, res) =>{
   });
   }
 }
+
+exports.getActivityLogs = async (req, res) => {
+  try {
+    const { customer } = req.body;
+
+    if (!customer || customer.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a customer ID or 'all'",
+      });
+    }
+
+    let matchStage = {};
+
+    if (customer.trim().toLowerCase() !== "all") {
+      if (!mongoose.Types.ObjectId.isValid(customer)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid customer ID",
+        });
+      }
+      matchStage.customerId = new mongoose.Types.ObjectId(customer);
+    }
+
+    const logs = await ActivityLog.aggregate([
+      { $match: matchStage },
+
+      // Lookup customer data
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customerId",
+          foreignField: "_id",
+          as: "customerData"
+        }
+      },
+      { $unwind: { path: "$customerData", preserveNullAndEmptyArrays: true } },
+
+      // Lookup admin data
+      {
+        $lookup: {
+          from: "admins",
+          localField: "performedBy",
+          foreignField: "_id",
+          as: "performedBy"
+        }
+      },
+      { $unwind: { path: "$performedBy", preserveNullAndEmptyArrays: true } },
+
+      // Optionally project only necessary fields
+      {
+        $project: {
+          action: 1,
+          previousValue: 1,
+          newValue: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          changeSummary:1,
+          "customerData.firstName": 1,
+          "customerData.lastName": 1,
+          "customerData._id": 1,
+          "performedBy.firstName": 1,
+          "performedBy.lastName": 1,
+          "performedBy._id": 1
+        }
+      },
+      { $sort: { createdAt: -1 } }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Activity logs fetched successfully",
+      data: logs,
+    });
+  } catch (error) {
+    console.error("Error in getActivityLogs:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+exports.getMonthlyActivitySummary = async (req, res) => {
+  try {
+    const { customer } = req.body;
+
+    const today = new Date();
+    const startDate = new Date();
+    startDate.setDate(today.getDate() - 29); // Last 30 days including today
+
+    let matchStage = {
+      createdAt: {
+        $gte: new Date(startDate.setHours(0, 0, 0, 0)),
+        $lte: new Date(today.setHours(23, 59, 59, 999))
+      }
+    };
+
+    if (customer && customer.trim().toLowerCase() !== "all") {
+      if (!mongoose.Types.ObjectId.isValid(customer)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid customer ID",
+        });
+      }
+      matchStage.customerId = new mongoose.Types.ObjectId(customer);
+    }
+
+    // Fetch activity logs grouped by date
+    const rawData = await ActivityLog.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          date: "$_id",
+          count: 1
+        }
+      }
+    ]);
+
+    // Convert result into a Map for faster lookup
+    const dataMap = new Map();
+    rawData.forEach(item => dataMap.set(item.date, item.count));
+
+    // Create final result for all 30 days
+    const result = [];
+    for (let i = 0; i < 30; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - (29 - i));
+      const dateStr = date.toISOString().split("T")[0];
+      result.push({
+        date: new Date(dateStr),
+        count: dataMap.get(dateStr) || 0
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "30-day activity summary fetched",
+      data: result,
+    });
+
+  } catch (error) {
+    console.error("Error in getMonthlyActivitySummary:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
