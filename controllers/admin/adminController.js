@@ -214,7 +214,7 @@ exports.updateNotification = async (req, res) => {
 
 exports.updateBasicDetails = async (req, res) => {
   try {
-    const { userId } = req.body; // Extract userId from body
+    // const { userId } = req.body; // Extract userId from body
     const authenticatedUserId = req.id; // Extract from token (middleware)
 
     // Validate request body
