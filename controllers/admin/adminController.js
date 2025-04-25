@@ -3125,41 +3125,41 @@ exports.form_group_List = async (req, res) => {
 exports.getRecentlySubmittedClients = async (req, res) => {
   try {
     const { name } = req.body;
-
-    if (!name || name.trim().length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid name to search"
-      });
-    }
-
     let customers;
 
-    if (name.trim().toLowerCase() === "all") {
-      // Return all non-deleted, inactive customers
+    // If name is not provided, return all non-deleted, inactive customers
+    if (!name || name.trim().length < 2) {
       customers = await Customer.find({
         isDeleted: false,
         activeStatus: false
       });
     } else {
-      const searchWords = name.trim().split(/\s+/);
+      // If "all" is passed as name, return all as well
+      if (name.trim().toLowerCase() === "all") {
+        customers = await Customer.find({
+          isDeleted: false,
+          activeStatus: false
+        });
+      } else {
+        const searchWords = name.trim().split(/\s+/);
 
-      const nameConditions = searchWords.map(word => {
-        const regex = new RegExp(word, 'i');
-        return {
-          $or: [
-            { firstName: regex },
-            { middelName: regex },
-            { lastName: regex }
-          ]
-        };
-      });
+        const nameConditions = searchWords.map(word => {
+          const regex = new RegExp(word, 'i');
+          return {
+            $or: [
+              { firstName: regex },
+              { middelName: regex },
+              { lastName: regex }
+            ]
+          };
+        });
 
-      customers = await Customer.find({
-        isDeleted: false,
-        activeStatus: false,
-        $and: nameConditions
-      });
+        customers = await Customer.find({
+          isDeleted: false,
+          activeStatus: false,
+          $and: nameConditions
+        });
+      }
     }
 
     res.status(200).json({
