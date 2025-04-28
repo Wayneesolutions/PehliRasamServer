@@ -102,6 +102,13 @@ const {
   getCustomerCountLastFiveDays,
   getActivityLogs,
   getMonthlyActivitySummary,
+  createPreset,
+  updatePreset,
+  deletePreset,
+  createPresetField,
+  deletePresetFields,
+  getAllPresetsWithFields,
+  updatePresetField
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -244,6 +251,18 @@ router.post("/getMonthlyActivitySummary", checkAdminToken, getMonthlyActivitySum
 // router.route('/getFromGroupList').get(form_group_List);
 router.route('/clientSubmissions').get(getClientSubmissions);
 router.route('/recentlySubmittedClients').get(getRecentlySubmittedClients);
+
+
+router.post("/createPreset", checkAdminToken, createPreset);
+router.post("/updatePreset", checkAdminToken, updatePreset);
+router.post("/deletePreset", checkAdminToken, deletePreset);
+router.post("/createPresetField", checkAdminToken, createPresetField);
+router.post("/deletePresetFields", checkAdminToken, deletePresetFields);
+router.get("/getAllPresetsWithFields", checkAdminToken, getAllPresetsWithFields);
+router.post("/updatePresetField", checkAdminToken, updatePresetField);
+
+
+
 
 
 module.exports = router;

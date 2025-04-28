@@ -31,6 +31,8 @@ const EmailTemplate = require('../../models/customer/mail/emailTemplate');
 const MailLog = require('../../models/customer/mail/mailLog');
 const sendEmail = require('../../utils/sendEmail');
 const ActivityLog = require("../../models/customer/activityLog");
+const Preset = require("../../models/customer/Presets/Preset");
+const PresetFields = require('../../models/customer/Presets/presetFields');
 
 
 
@@ -214,33 +216,28 @@ exports.updateNotification = async (req, res) => {
 
 exports.updateBasicDetails = async (req, res) => {
   try {
-    // const { userId } = req.body; // Extract userId from body
+    const { userId } = req.body; // Extract userId from body
     const authenticatedUserId = req.id; // Extract from token (middleware)
 
-    // Validate request body
     const { error } = basicDetailsSchema.validate(req.body, { allowUnknown: false });
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    // Ensure users can only update their own details
     if (userId !== authenticatedUserId.toString()) {
       return res.status(403).json({ error: 'Unauthorized: You can only update your own details' });
     }
 
-    // Find the admin
     const admin = await Admin.findById(userId);
     if (!admin) {
       return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Prepare update object (excluding email & userId)
     const updateObject = {};
     ['firstName', 'lastName', 'number'].forEach((key) => {
       if (req.body[key] !== undefined) updateObject[key] = req.body[key];
     });
 
-    // Handle profile picture upload from S3
     if (req.file) {
       // updateObject.profilePic = req.file.location; // S3 URL
       updateObject.profilePic = getImageUrl(req.file.filename); // S3 URL
@@ -3096,6 +3093,289 @@ exports.getCustomerCountLastFiveDays = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 };
+
+
+exports.createPreset = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+
+    const newPreset = new Preset({
+      name,
+      createdBy: req.id,
+    });
+
+    await newPreset.save();
+    res.status(201).json(newPreset);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+exports.updatePreset = async (req, res) => {
+  try {
+    const { name, id } = req.body;  // Get both name and id from the request body
+
+    if (!name) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+
+    if (!id) {
+      return res.status(400).json({ message: "Preset ID is required" });
+    }
+
+    // Find the preset by ID (from request body)
+    const preset = await Preset.findById({_id: id, isDeleted: false});
+    if (!preset) {
+      return res.status(404).json({ message: "Preset not found. Please check the provided ID." });
+    }
+
+    // Update the preset and set `editedBy` to the authenticated user's ID
+    const updatedPreset = await Preset.findByIdAndUpdate(
+      {_id: id},  // Use the ID from the request body
+      { name, editedBy: req.id },  // Set editedBy to the authenticated user's ID
+      { new: true }  // Return the updated document
+    );
+
+    return res.status(200).json({
+      message: "Preset updated successfully", // Success message
+      updatedPreset: updatedPreset
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Error occurred while updating the preset. Please try again.", error: err.message });
+  }
+};
+
+exports.deletePreset = async (req, res) => {
+  try {
+    const { id } = req.body;  // Preset ID is sent in the request body instead of the URL
+    if (!id) {
+      return res.status(400).json({ message: "Preset ID is required in the request body" });
+    }
+
+    const preset = await Preset.findById(id);
+    if (!preset) {
+      return res.status(404).json({ message: 'Preset not found' });
+    }
+
+    if (preset.isDeleted) {
+      return res.status(400).json({ message: 'Preset is already deleted' });
+    }
+
+    // Perform soft delete by setting isDeleted to true and set editedBy to the request user ID
+    const updatedPreset = await Preset.findByIdAndUpdate(
+      {_id: id},
+      { isDeleted: true, editedBy: req.id },
+      { new: true }
+    );
+
+    res.status(200).json({ message: 'Preset deleted successfully', updatedPreset });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+exports.createPresetField = async (req, res) => {
+  try {
+    const { profileFieldsId, preferenceFieldsId, AllowEdit, isRequired, presetId } = req.body;
+
+    // Validation to ensure that either `profileFieldsId` or `preferenceFieldsId` is provided
+    if (!profileFieldsId && !preferenceFieldsId) {
+      return res.status(400).json({ message: "Either profileFieldsId or preferenceFieldsId must be provided" });
+    }
+
+    // Create the new PresetField
+    const newPresetField = new PresetFields({
+      profileFieldsId,
+      preferenceFieldsId,
+      AllowEdit,
+      isRequired,
+      presetId, // Reference to Preset
+      createdBy: req.id, // Assuming req.user.id is set after authentication
+    });
+
+    // Save the PresetField to the database
+    const savedPresetField = await newPresetField.save();
+
+    return res.status(201).json({
+      message: "PresetField created successfully",
+      success: true,
+      savedPresetField,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Error creating preset field", error: err.message });
+  }
+};
+
+exports.deletePresetFields = async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Preset Field ID is required" });
+    }
+
+    const presetField = await PresetFields.findById(id);
+
+    if (!presetField) {
+      return res.status(404).json({ message: "PresetField not found" });
+    }
+
+    if (presetField.isDeleted) {
+      return res.status(400).json({ message: "PresetField is already deleted" });
+    }
+
+    // Soft delete by setting isDeleted to true and updating the `editedBy` field with the authenticated user's ID
+    const updatedPresetField = await PresetFields.findByIdAndUpdate(
+      {_id: id},
+      { isDeleted: true, editedBy: req.id },  // Assuming `req.user.id` is set by authentication middleware
+      { new: true }
+    );
+
+    return res.status(200).json({
+      message: "PresetField deleted successfully",
+      success: true,
+      updatedPresetField,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "An error occurred while deleting the PresetField", error: err.message });
+  }
+};
+
+exports.getAllPresetsWithFields = async (req, res) => {
+  try {
+    const presets = await Preset.find({ isDeleted: false }).lean();
+
+    if (!presets.length) {
+      return res.status(404).json({ message: 'No presets found', success: false });
+    }
+
+    const presetsWithFields = await Promise.all(
+      presets.map(async (preset) => {
+        const presetFields = await PresetFields.find({
+          presetId: preset._id,
+          isDeleted: false
+        }).lean();
+
+        const formattedFields = await Promise.all(
+          presetFields.flatMap(async (field) => {
+            const fieldsArray = [];
+
+            if (field.preferenceFieldsId) {
+              const preferenceField = await PreferencesFields.findOne({
+                _id: field.preferenceFieldsId,
+                isDeleted: false
+              }).lean();
+
+              if (preferenceField) {
+                fieldsArray.push({
+                  Label: preferenceField.label,
+                  Kind: "preference",
+                  Field: preferenceField.profileField,
+                  Required: field.isRequired,
+                  AllowEdit: field.AllowEdit
+                });
+              }
+            }
+
+            if (field.profileFieldsId) {
+              const profileField = await FormField.findOne({
+                _id: field.profileFieldsId,
+                isDeleted: false
+              }).lean();
+
+              if (profileField) {
+                fieldsArray.push({
+                  Label: profileField.attributeName,
+                  Kind: "profile",
+                  Field: profileField.attributeType,
+                  Required: field.isRequired,
+                  AllowEdit: field.AllowEdit
+                });
+              }
+            }
+
+            return fieldsArray;
+          })
+        );
+
+        // Flatten the array of arrays
+        const finalFormattedFields = formattedFields.flat();
+
+        return {
+          ...preset,
+          fields: finalFormattedFields
+        };
+      })
+    );
+
+    res.status(200).json({
+      message: 'Presets with fields fetched successfully',
+      success: true,
+      data: presetsWithFields
+    });
+
+  } catch (error) {
+    console.error('Error fetching presets with fields:', error);
+    res.status(500).json({
+      message: 'Something went wrong',
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+exports.updatePresetField = async (req, res) => {
+  try {
+    const { presetFieldId, AllowEdit, isRequired } = req.body;
+
+    // Validation
+    if (!presetFieldId) {
+      return res.status(400).json({ message: "presetFieldId is required", success: false });
+    }
+
+    if (typeof AllowEdit !== 'boolean' || typeof isRequired !== 'boolean') {
+      return res.status(400).json({ 
+        message: "AllowEdit and isRequired must be Boolean (true/false) values",
+        success: false
+      });
+    }
+
+    const presetField = await PresetFields.findOne({ _id: presetFieldId, isDeleted: false });
+
+    if (!presetField) {
+      return res.status(404).json({ message: "PresetField not found", success: false });
+    }
+
+    presetField.AllowEdit = AllowEdit;
+    presetField.isRequired = isRequired;
+
+    await presetField.save();
+
+    return res.status(200).json({
+      message: "PresetField updated successfully",
+      success: true,
+      data: presetField
+    });
+
+  } catch (error) {
+    console.error('Error updating PresetField:', error);
+    res.status(500).json({
+      message: 'Something went wrong',
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+
+
+
 
 /////////////////////////    //////////////////////////
 

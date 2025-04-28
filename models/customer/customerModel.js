@@ -70,7 +70,7 @@ const customerSchema = new mongoose.Schema({
     email: { 
         type: String, 
         Default: null,
-        unique: true, 
+        // unique: true, 
         trim: true, 
         match: [/^\S+@\S+\.\S+$/, "Invalid email format"] 
     },
