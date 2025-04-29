@@ -108,7 +108,10 @@ const {
   createPresetField,
   deletePresetFields,
   getAllPresetsWithFields,
-  updatePresetField
+  updatePresetField,
+  createIntro,
+  getIntroFieldValues,
+  updateIntroExpiration
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -260,6 +263,11 @@ router.post("/createPresetField", checkAdminToken, createPresetField);
 router.post("/deletePresetFields", checkAdminToken, deletePresetFields);
 router.get("/getAllPresetsWithFields", checkAdminToken, getAllPresetsWithFields);
 router.post("/updatePresetField", checkAdminToken, updatePresetField);
+
+router.post("/createIntro", checkAdminToken, createIntro);
+router.post("/getIntroFieldValues", checkAdminToken, getIntroFieldValues);
+router.post("/updateIntroExpiration", checkAdminToken, updateIntroExpiration);
+
 
 
 

@@ -33,7 +33,8 @@ const sendEmail = require('../../utils/sendEmail');
 const ActivityLog = require("../../models/customer/activityLog");
 const Preset = require("../../models/customer/Presets/Preset");
 const PresetFields = require('../../models/customer/Presets/presetFields');
-
+const Intro = require("../../models/customer/intro/intro");
+const IntroFields = require("../../models/customer/intro/introFields");
 
 
 
@@ -3094,7 +3095,6 @@ exports.getCustomerCountLastFiveDays = async (req, res) => {
   }
 };
 
-
 exports.createPreset = async (req, res) => {
   try {
     const { name } = req.body;
@@ -3277,6 +3277,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
+                  id: field._id,
                   Label: fieldData.attributeName,
                   Kind: "profile",
                   Field: fieldData.attributeType,
@@ -3292,6 +3293,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
+                  id: field._id,
                   Label: fieldData.label,
                   Kind: "preference",
                   Field: fieldData.profileField,
@@ -3301,13 +3303,11 @@ exports.getAllPresetsWithFields = async (req, res) => {
               }
             }
 
-            // If no matching fieldData found
-            return null;
+            return null; // No matching field data found
           })
         );
 
-        // Filter out any null results
-        const finalFormattedFields = formattedFields.filter(Boolean);
+        const finalFormattedFields = formattedFields.filter(Boolean); // remove nulls
 
         return {
           ...preset,
@@ -3316,7 +3316,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
       })
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Presets with fields fetched successfully',
       success: true,
       data: presetsWithFields
@@ -3324,7 +3324,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching presets with fields:', error);
-    res.status(500).json({
+    return res.status(500).json({
       message: 'Something went wrong',
       success: false,
       error: error.message
@@ -3380,6 +3380,206 @@ exports.updatePresetField = async (req, res) => {
   }
 };
 
+exports.createIntro = async (req, res) => {
+  try {
+    const { expiration, profileImage, fields, customerId } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    const validFieldsForValues = ["Preferences", "Profile"];
+    const invalidFields = fields.filter(field => !validFieldsForValues.includes(field.fieldsFor));
+    if (invalidFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid fieldsFor value. Only 'Preferences' or 'Profile' are allowed.`,
+      });
+    }
+
+    const introCount = await Intro.countDocuments();
+    const nextIntroId = (introCount + 1).toString().padStart(5, "0"); // Example: "00001"
+
+    const introData = {
+      introId: nextIntroId,
+      customerId: customerId,
+      createdAt: new Date(),
+      sentCount: 0,
+      viewed: 0,
+      total: 0,
+      expiration: expiration || new Date(),
+      link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
+      profileImage: profileImage || "default_image_path",
+    };
+
+    const newIntro = new Intro(introData);
+    await newIntro.save();
+
+    const introFieldsPromises = fields.map(async (field) => {
+      const newField = new IntroFields({
+        fieldId: field.fieldId,
+        fieldsFor: field.fieldsFor,
+        editedBy: field.editedBy,
+        createdBy: field.createdBy,
+        isDeleted: field.isDeleted || false,
+        introId: newIntro._id,
+      });
+
+      return await newField.save();
+    });
+
+    await Promise.all(introFieldsPromises);
+
+    res.status(201).json({
+      success: true,
+      message: "Intro and fields created successfully!",
+      data: {
+        intro: newIntro,
+        fields: fields,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating intro:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating intro and fields.",
+      error: error.message,
+    });
+  }
+};
+
+exports.getIntroFieldValues = async (req, res) => {
+  try {
+    const { introId } = req.body;
+
+    if (!introId) {
+      return res.status(400).json({
+        success: false,
+        message: "introId is required in request body"
+      });
+    }
+
+    // 1. Find intro by introId
+    const intro = await Intro.findOne({ introId });
+    if (!intro) {
+      return res.status(404).json({
+        success: false,
+        message: "Intro not found"
+      });
+    }
+
+    // 2. Fetch customer
+    const customer = await Customer.findById(intro.customerId).select("firstName middelName lastName Number address.city");
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found"
+      });
+    }
+
+    const result = [];
+
+    // 3. Add customer fields as "Profile" entries
+    const customerFields = {
+      firstName: customer.firstName,
+      middelName: customer.middelName,
+      lastName: customer.lastName,
+      Number: customer.Number,
+      city: customer?.address?.city || null
+    };
+
+    for (const [key, value] of Object.entries(customerFields)) {
+      result.push({
+        fieldName: key,
+        value: value,
+        fieldsFor: "Profile"
+      });
+    }
+
+    // 4. Get linked intro fields
+    const introFields = await IntroFields.find({ introId: intro._id });
+
+    for (const field of introFields) {
+      let fieldName = "";
+      let fieldValue = "";
+
+      if (field.fieldsFor === "Profile") {
+        const formField = await FormField.findById(field.fieldId);
+        if (!formField) continue;
+        fieldName = formField.attributeName;
+
+        const valueDoc = await FormFieldsValue.findOne({
+          fieldId: field.fieldId,
+          customerId: intro.customerId,
+        });
+        fieldValue = valueDoc ? valueDoc.value : null;
+
+      } else if (field.fieldsFor === "Preferences") {
+        const prefField = await PreferencesFields.findById(field.fieldId);
+        if (!prefField) continue;
+        fieldName = prefField.label;
+
+        const valueDoc = await PreferencesFieldsValue.findOne({
+          preferencesFieldId: field.fieldId,
+          customerId: intro.customerId,
+        });
+        fieldValue = valueDoc ? valueDoc.value : null;
+      }
+
+      result.push({
+        fieldName,
+        value: fieldValue,
+        fieldsFor: field.fieldsFor
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      intro,
+      fields: result
+    });
+
+  } catch (error) {
+    console.error("Error fetching intro field values:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+exports.updateIntroExpiration = async (req, res) => {
+  try {
+    const { introId, newExpiration } = req.body;
+
+    if (!introId || !newExpiration) {
+      return res.status(400).json({ message: "introId and newExpiration are required." });
+    }
+
+    const updatedIntro = await Intro.findOneAndUpdate(
+      { introId, isDeleted: false },
+      { expiration: newExpiration },
+      { new: true }
+    );
+
+    if (!updatedIntro) {
+      return res.status(404).json({ message: "Intro not found or has been deleted." });
+    }
+
+    return res.status(200).json({
+      message: "Expiration date updated successfully.",
+      data: updatedIntro
+    });
+
+  } catch (error) {
+    console.error("Error updating expiration:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
 
 
 
