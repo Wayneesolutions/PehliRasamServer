@@ -2956,6 +2956,60 @@ exports.sendCustomerMail = async (req, res) => {
     }
 };
 
+exports.sendMailForIntro = async (req, res) => {
+  try {
+    const { customerId, introLink, subject, body, extraEmails = [] } = req.body;
+    const adminId = req.id;
+
+    if (!customerId || !subject || !body || !introLink) {
+      return res.status(400).json({ message: 'customerId, subject, body, and introLink are required.' });
+    }
+
+    // Fetch customer
+    const customer = await Customer.findById(customerId);
+    if (!customer || !customer.email) {
+      return res.status(404).json({ message: 'Customer not found or email missing.' });
+    }
+
+    // Collect all recipients
+    const recipients = [customer.email, ...extraEmails];
+
+    // Send email to each recipient
+    const sendResults = await Promise.all(
+      recipients.map(email =>
+        sendEmail({
+          to: email,
+          subject,
+          text: body.replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
+          html: `${body}<br/><br/><a href="${introLink}">${introLink}</a>`
+        })
+      )
+    );
+
+    // Log email once (mainly for customer)
+    const mailLog = new MailLog({
+      customer: customer._id,
+      subject,
+      body,
+      sentBy: adminId,
+      sentByEmail: process.env.SENDGRID_FROM_EMAIL,
+      deliveryStatus: sendResults[0]?.success ? 'Sent' : 'Failed'
+    });
+
+    await mailLog.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Intro email(s) sent successfully.',
+      recipients
+    });
+
+  } catch (error) {
+    console.error('Send Intro Mail Error:', error);
+    return res.status(500).json({ message: 'Internal server error.', error });
+  }
+};
+
 exports.getMailLogs = async (req, res) => {
   try {
     const { search } = req.body;
@@ -3332,6 +3386,90 @@ exports.getAllPresetsWithFields = async (req, res) => {
   }
 };
 
+exports.getPresetById = async (req, res) => {
+  try {
+    const { presetId } = req.body;
+
+    // Step 1: Get preset
+    const preset = await Preset.findOne({ _id: presetId, isDeleted: false }).lean();
+
+    console.log("preset::::::::", preset);
+
+    if (!preset) {
+      return res.status(404).json({ message: 'Preset not found', success: false });
+    }
+
+    // Step 2: Get all fields linked to this preset
+    const presetFields = await PresetFields.find({
+      presetId,
+      isDeleted: false
+    }).lean();
+
+    // Step 3: Process each field to get metadata
+    const formattedFields = await Promise.all(
+      presetFields.map(async (field) => {
+        let fieldData = null;
+
+        if (field.fieldsFor === 'profile') {
+          fieldData = await FormField.findOne({
+            _id: field.fieldsId,
+            isDeleted: false
+          }).lean();
+
+          if (fieldData) {
+            return {
+              id: field._id,
+              Label: fieldData.attributeName,
+              Kind: "profile",
+              Field: fieldData.attributeType,
+              Required: field.isRequired,
+              AllowEdit: field.AllowEdit
+            };
+          }
+
+        } else if (field.fieldsFor === 'Preferences') {
+          fieldData = await PreferencesFields.findOne({
+            _id: field.fieldsId,
+            isDeleted: false
+          }).lean();
+
+          if (fieldData) {
+            return {
+              id: field._id,
+              Label: fieldData.label,
+              Kind: "preference",
+              Field: fieldData.profileField,
+              Required: field.isRequired,
+              AllowEdit: field.AllowEdit
+            };
+          }
+        }
+
+        return null; // Skip if no match
+      })
+    );
+
+    // Step 4: Clean nulls and return
+    const finalFormattedFields = formattedFields.filter(Boolean);
+
+    return res.status(200).json({
+      message: 'Preset fetched successfully',
+      success: true,
+      data: {
+        ...preset,
+        fields: finalFormattedFields
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching preset by ID:', error);
+    return res.status(500).json({
+      message: 'Something went wrong',
+      success: false,
+      error: error.message
+    });
+  }
+};
 
 exports.updatePresetField = async (req, res) => {
   try {
