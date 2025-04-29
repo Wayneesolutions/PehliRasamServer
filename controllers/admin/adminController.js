@@ -3690,6 +3690,56 @@ exports.getIntroFieldValues = async (req, res) => {
   }
 };
 
+exports.getIntroSummaries = async (req, res) => {
+  try {
+    const intros = await Intro.find({ isDeleted: false })
+      .populate("customerId", "firstName middelName lastName") // get only name fields
+      .select("introId customerId createdAt sentCount viewed total")
+      .lean();
+
+    if (!intros.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No intros found"
+      });
+    }
+
+    const result = intros.map((intro) => {
+      const customer = intro.customerId;
+
+      const fullName = [
+        customer.firstName,
+        customer.middelName,
+        customer.lastName
+      ]
+        .filter(Boolean) // Remove undefined/null parts
+        .join(" ");
+
+      return {
+        introId: intro.introId,
+        customerName: fullName,
+        createdAt: intro.createdAt,
+        stats: `${intro.sentCount} sent / ${intro.viewed} viewed / ${intro.total} total`
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    console.error("Error fetching intro summaries:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+
+
 exports.updateIntroExpiration = async (req, res) => {
   try {
     const { introId, newExpiration } = req.body;

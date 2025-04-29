@@ -113,6 +113,7 @@ const {
   getIntroFieldValues,
   updateIntroExpiration,
   getPresetById,
+  getIntroSummaries
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -268,6 +269,7 @@ router.post("/getPresetById", checkAdminToken, getPresetById);
 
 router.post("/createIntro", checkAdminToken, createIntro);
 router.post("/getIntroFieldValues", checkAdminToken, getIntroFieldValues);
+router.get("/getAllIntroSummaries", checkAdminToken, getIntroSummaries);
 router.post("/updateIntroExpiration", checkAdminToken, updateIntroExpiration);
 
 
