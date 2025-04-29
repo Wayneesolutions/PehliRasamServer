@@ -3177,39 +3177,42 @@ exports.deletePreset = async (req, res) => {
   }
 };
 
-
 exports.createPresetField = async (req, res) => {
   try {
-    const { profileFieldsId, preferenceFieldsId, AllowEdit, isRequired, presetId } = req.body;
+    const presetFieldsArray = req.body; // Expecting an array
 
-    // Validation to ensure that either `profileFieldsId` or `preferenceFieldsId` is provided
-    if (!profileFieldsId && !preferenceFieldsId) {
-      return res.status(400).json({ message: "Either profileFieldsId or preferenceFieldsId must be provided" });
+    // Validate that the request body is a non-empty array
+    if (!Array.isArray(presetFieldsArray) || presetFieldsArray.length === 0) {
+      return res.status(400).json({ message: "An array of preset fields must be provided" });
     }
 
-    // Create the new PresetField
-    const newPresetField = new PresetFields({
-      profileFieldsId,
-      preferenceFieldsId,
-      AllowEdit,
-      isRequired,
-      presetId, // Reference to Preset
-      createdBy: req.id, // Assuming req.user.id is set after authentication
-    });
+    // Validate each item inside the array
+    for (const field of presetFieldsArray) {
+      if (!field.fieldsId || !field.fieldsFor) {
+        return res.status(400).json({ message: "Each preset field must have fieldsId and fieldsFor" });
+      }
+    }
 
-    // Save the PresetField to the database
-    const savedPresetField = await newPresetField.save();
+    // Add createdBy to each entry
+    const dataToInsert = presetFieldsArray.map(item => ({
+      ...item,
+      createdBy: req.id, // Assuming req.id is populated after authentication
+    }));
+
+    // Insert multiple documents into database
+    const savedPresetFields = await PresetFields.insertMany(dataToInsert);
 
     return res.status(201).json({
-      message: "PresetField created successfully",
+      message: "Preset fields created successfully",
       success: true,
-      savedPresetField,
+      data: savedPresetFields,
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Error creating preset field", error: err.message });
+    return res.status(500).json({ message: "Error creating preset fields", error: err.message });
   }
 };
+
 
 exports.deletePresetFields = async (req, res) => {
   try {
@@ -3263,49 +3266,48 @@ exports.getAllPresetsWithFields = async (req, res) => {
         }).lean();
 
         const formattedFields = await Promise.all(
-          presetFields.flatMap(async (field) => {
-            const fieldsArray = [];
+          presetFields.map(async (field) => {
+            let fieldData = null;
 
-            if (field.preferenceFieldsId) {
-              const preferenceField = await PreferencesFields.findOne({
-                _id: field.preferenceFieldsId,
+            if (field.fieldsFor === 'profile') {
+              fieldData = await FormField.findOne({
+                _id: field.fieldsId,
                 isDeleted: false
               }).lean();
 
-              if (preferenceField) {
-                fieldsArray.push({
-                  Label: preferenceField.label,
-                  Kind: "preference",
-                  Field: preferenceField.profileField,
-                  Required: field.isRequired,
-                  AllowEdit: field.AllowEdit
-                });
-              }
-            }
-
-            if (field.profileFieldsId) {
-              const profileField = await FormField.findOne({
-                _id: field.profileFieldsId,
-                isDeleted: false
-              }).lean();
-
-              if (profileField) {
-                fieldsArray.push({
-                  Label: profileField.attributeName,
+              if (fieldData) {
+                return {
+                  Label: fieldData.attributeName,
                   Kind: "profile",
-                  Field: profileField.attributeType,
+                  Field: fieldData.attributeType,
                   Required: field.isRequired,
                   AllowEdit: field.AllowEdit
-                });
+                };
+              }
+            } else if (field.fieldsFor === 'Preferences') {
+              fieldData = await PreferencesFields.findOne({
+                _id: field.fieldsId,
+                isDeleted: false
+              }).lean();
+
+              if (fieldData) {
+                return {
+                  Label: fieldData.label,
+                  Kind: "preference",
+                  Field: fieldData.profileField,
+                  Required: field.isRequired,
+                  AllowEdit: field.AllowEdit
+                };
               }
             }
 
-            return fieldsArray;
+            // If no matching fieldData found
+            return null;
           })
         );
 
-        // Flatten the array of arrays
-        const finalFormattedFields = formattedFields.flat();
+        // Filter out any null results
+        const finalFormattedFields = formattedFields.filter(Boolean);
 
         return {
           ...preset,
@@ -3330,6 +3332,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
   }
 };
 
+
 exports.updatePresetField = async (req, res) => {
   try {
     const { presetFieldId, AllowEdit, isRequired } = req.body;
@@ -3346,32 +3349,37 @@ exports.updatePresetField = async (req, res) => {
       });
     }
 
+    // Find the preset field
     const presetField = await PresetFields.findOne({ _id: presetFieldId, isDeleted: false });
 
     if (!presetField) {
       return res.status(404).json({ message: "PresetField not found", success: false });
     }
 
+    // Update the fields
     presetField.AllowEdit = AllowEdit;
     presetField.isRequired = isRequired;
+    presetField.editedBy = req.id; // Optionally track who edited it
 
+    // Save updated preset field
     await presetField.save();
 
     return res.status(200).json({
       message: "PresetField updated successfully",
       success: true,
-      data: presetField
+      data: presetField,
     });
 
   } catch (error) {
     console.error('Error updating PresetField:', error);
-    res.status(500).json({
+    return res.status(500).json({
       message: 'Something went wrong',
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 };
+
 
 
 

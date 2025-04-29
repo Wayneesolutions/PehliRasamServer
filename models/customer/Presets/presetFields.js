@@ -1,13 +1,13 @@
 const mongoose = require("mongoose");
 
 const presetFieldsSchema = new mongoose.Schema({
-  profileFieldsId: {
+  fieldsId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "FormField",
   },
-  preferenceFieldsId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "PreferencesFields",
+  fieldsFor: {
+    type: String,
+    // ref: "PreferencesFields",
   },
   AllowEdit: {
     type: Boolean,
