@@ -113,7 +113,8 @@ const {
   getIntroFieldValues,
   updateIntroExpiration,
   getPresetById,
-  getIntroSummaries
+  getIntroSummaries,
+  sendMailForIntro
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -235,6 +236,7 @@ router.post("/getEmailTemplateById", checkAdminToken, getEmailTemplateById)
 
 
 router.post("/sendCustomerMail", checkAdminToken, sendCustomerMail)
+router.post("/sendMailForIntro", checkAdminToken, sendMailForIntro)
 router.post("/mailLogs", checkAdminToken, getMailLogs)
 // router.get("/searchMailLogs", checkAdminToken, searchMailLogs)
 
