@@ -90,14 +90,16 @@ const customerSchema = new mongoose.Schema({
     ],
     address: { 
         street: { type: String, trim: true, default: null },  // Street address, including unit/apartment number
-        city: { 
-            type: String, 
-            trim: true, 
-            enum: {
-                values: allowedCities,
-                message: '{VALUE} is not an allowed city'
-            },
-            default: null
+        city: {
+            type: String,
+            trim: true,
+            default: '',
+            validate: {
+                validator: function (value) {
+                    return value === '' || allowedCities.includes(value);
+                },
+                message: props => `${props.value} is not an allowed city`
+            }
         },
         state: { type: String, trim: true, default: null },  // State, province, or region
         country: { 
