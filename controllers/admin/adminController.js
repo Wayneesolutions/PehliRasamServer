@@ -3332,7 +3332,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
-                  id: field._id,
+                  id: field.fieldId,
                   Label: fieldData.attributeName,
                   Kind: "profile",
                   Field: fieldData.attributeType,
@@ -3348,7 +3348,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
-                  id: field._id,
+                  id: field.fieldId,
                   Label: fieldData.label,
                   Kind: "preference",
                   Field: fieldData.profileField,
@@ -3641,12 +3641,17 @@ exports.getIntroFieldValues = async (req, res) => {
     // 4. Get linked intro fields
     const introFields = await IntroFields.find({ introId: intro._id });
 
+
+    console.log("::::::::::::::::::::", introFields)
+
     for (const field of introFields) {
       let fieldName = "";
       let fieldValue = "";
 
       if (field.fieldsFor === "Profile") {
-        const formField = await FormField.findById(field.fieldId);
+        const formField = await FormField.findById({_id: field.fieldId});
+// console.log("formField::::::::::::::", field.fieldId)
+
         if (!formField) continue;
         fieldName = formField.attributeName;
 
