@@ -3419,7 +3419,7 @@ exports.getPresetById = async (req, res) => {
 
           if (fieldData) {
             return {
-              id: field._id,
+              id: field.fieldId,
               Label: fieldData.attributeName,
               Kind: "profile",
               Field: fieldData.attributeType,
@@ -3436,7 +3436,7 @@ exports.getPresetById = async (req, res) => {
 
           if (fieldData) {
             return {
-              id: field._id,
+              id: field.fieldId,
               Label: fieldData.label,
               Kind: "preference",
               Field: fieldData.profileField,
