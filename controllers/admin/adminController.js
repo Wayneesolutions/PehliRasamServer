@@ -217,8 +217,8 @@ exports.updateNotification = async (req, res) => {
 
 exports.updateBasicDetails = async (req, res) => {
   try {
-    const { userId } = req.body; // Extract userId from body
-    const authenticatedUserId = req.id; // Extract from token (middleware)
+    const { userId, password } = req.body;
+    const authenticatedUserId = req.id;
 
     const { error } = basicDetailsSchema.validate(req.body, { allowUnknown: false });
     if (error) {
@@ -240,13 +240,14 @@ exports.updateBasicDetails = async (req, res) => {
     });
 
     if (req.file) {
-      // updateObject.profilePic = req.file.location; // S3 URL
-      updateObject.profilePic = getImageUrl(req.file.filename); // S3 URL
+      updateObject.profilePic = getImageUrl(req.file.filename);
     }
 
-    console.log("::::::", req.file)
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateObject.password = hashedPassword;
+    }
 
-    // Update allowed fields
     const updatedAdmin = await Admin.findByIdAndUpdate(
       { _id: userId, isDeleted: false },
       { $set: updateObject },

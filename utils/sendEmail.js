@@ -1,9 +1,14 @@
-const sgMail = require('@sendgrid/mail');
+const nodemailer = require('nodemailer');
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // or your preferred service
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS, // Use app password for Gmail
+    },
+});
 
 const sendEmail = async ({ to, subject, text = '', html = '', attachments = [] }) => {
-    // Basic validation
     if (!to || !subject || (!text && !html)) {
         return {
             success: false,
@@ -11,23 +16,22 @@ const sendEmail = async ({ to, subject, text = '', html = '', attachments = [] }
         };
     }
 
-    const msg = {
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
         to,
-        from: process.env.SENDGRID_FROM_EMAIL,
         subject,
         text,
         html,
-        attachments,
+        attachments, // [{ filename, path, contentType }]
     };
 
     try {
-        const response = await sgMail.send(msg);
+        const info = await transporter.sendMail(mailOptions);
         console.log('Email sent:', subject, '→', to);
-        return { success: true, response };
+        return { success: true, response: info };
     } catch (error) {
-        const errorDetails = error?.response?.body?.errors || error.message || error;
-        console.error('SendGrid Error:', errorDetails);
-        return { success: false, error: errorDetails };
+        console.error('Nodemailer Error:', error);
+        return { success: false, error };
     }
 };
 
