@@ -3332,7 +3332,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
-                  id: field.fieldId,
+                  id: field.fieldsId,
                   Label: fieldData.attributeName,
                   Kind: "profile",
                   Field: fieldData.attributeType,
@@ -3348,7 +3348,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
-                  id: field.fieldId,
+                  id: field.fieldsId,
                   Label: fieldData.label,
                   Kind: "preference",
                   Field: fieldData.profileField,
@@ -3419,7 +3419,7 @@ exports.getPresetById = async (req, res) => {
 
           if (fieldData) {
             return {
-              id: field.fieldId,
+              id: field.fieldsId,
               Label: fieldData.attributeName,
               Kind: "profile",
               Field: fieldData.attributeType,
@@ -3436,7 +3436,7 @@ exports.getPresetById = async (req, res) => {
 
           if (fieldData) {
             return {
-              id: field.fieldId,
+              id: field.fieldsId,
               Label: fieldData.label,
               Kind: "preference",
               Field: fieldData.profileField,
