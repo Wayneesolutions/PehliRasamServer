@@ -3807,14 +3807,14 @@ exports.getRecentlySubmittedClients = async (req, res) => {
     if (!name || name.trim().length < 2) {
       customers = await Customer.find({
         isDeleted: false,
-        activeStatus: false
+        // activeStatus: false
       });
     } else {
       // If "all" is passed as name, return all as well
       if (name.trim().toLowerCase() === "all") {
         customers = await Customer.find({
           isDeleted: false,
-          activeStatus: false
+          // activeStatus: false
         });
       } else {
         const searchWords = name.trim().split(/\s+/);
@@ -3832,7 +3832,7 @@ exports.getRecentlySubmittedClients = async (req, res) => {
 
         customers = await Customer.find({
           isDeleted: false,
-          activeStatus: false,
+          // activeStatus: false,
           $and: nameConditions
         });
       }
