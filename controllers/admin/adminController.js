@@ -698,16 +698,22 @@ exports.getAllFieldTypeList = async (req, res) => {
 
 exports.uploadFile = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: "No files uploaded" });
     }
 
-    const fileUrl = await uploadToAzure(req.file);
+    // Assuming uploadToAzure handles a single file and returns a URL
+    const uploadedFiles = await Promise.all(
+      req.files.map(async (file) => {
+        const fileUrl = await uploadToAzure(file);
+        return fileUrl;
+      })
+    );
 
     res.status(200).json({
       success: true,
-      message: "File uploaded successfully",
-      fileUrl,
+      message: "Files uploaded successfully",
+      fileUrls: uploadedFiles,
     });
   } catch (error) {
     console.error("Upload Error:", error);
@@ -1996,16 +2002,18 @@ exports.addCustomerPhoto = async (req, res) => {
   try {
     const { customerId, url } = req.body;
 
-    if (!customerId || !url) {
+    if (!customerId || !url || !Array.isArray(url)) {
       return res.status(400).json({
         success: false,
-        message: 'customerId and url are required',
+        message: 'customerId and an array of urls are required',
       });
     }
 
+    const photoObjects = url.map((u) => ({ url: u }));
+
     const updatedCustomer = await Customer.findOneAndUpdate(
       { _id: customerId, isDeleted: false },
-      { $addToSet: { photos: { url } } }, // only adds if the exact { url } doesn't exist
+      { $addToSet: { photos: { $each: photoObjects } } },
       { new: true }
     );
 
@@ -2018,7 +2026,7 @@ exports.addCustomerPhoto = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Photo added (if not already present)',
+      message: 'Photos added (if not already present)',
       photos: updatedCustomer.photos,
     });
 
@@ -2031,6 +2039,7 @@ exports.addCustomerPhoto = async (req, res) => {
     });
   }
 };
+
 
 
 /////
