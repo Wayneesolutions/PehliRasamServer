@@ -798,6 +798,16 @@ exports.addCustomerByAdmin = async (req, res) => {
 
       await newCustomer.save();
 
+
+      let adminname = await Admin.findById(req.id).select("firstName lastName");
+      let changeSummary = `Customer ${newCustomer.firstName} ${newCustomer.lastName} create by Admin ${adminname.firstName} ${adminname.lastName}`;
+      await ActivityLog.create({
+        customerId: newCustomer._id,
+        performedBy: req.id,
+        action: `customer create`,
+        changeSummary: changeSummary
+      });
+
       return res.status(201).json({ success: true, message: "Customer created successfully.", data: newCustomer });
 
   } catch (error) {
@@ -2951,6 +2961,15 @@ exports.sendCustomerMail = async (req, res) => {
 
         await mailLog.save();
 
+
+        let adminname = await Admin.findById(req.id).select("firstName lastName");
+        let changeSummary = `Sanded mail to ${customer.firstName} ${customer.lastName} "subject : ${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+        await ActivityLog.create({
+          customerId: customer._id,
+          performedBy: req.id,
+          action: `mail sent`,
+          changeSummary: changeSummary
+        });
         return res.status(200).json({
             // success: true,
             // message: emailResponse.success ? 'Email sent and logged successfully.' : 'Failed to send email but log created.',
@@ -3007,6 +3026,16 @@ exports.sendMailForIntro = async (req, res) => {
     });
 
     await mailLog.save();
+
+
+    let adminname = await Admin.findById(req.id).select("firstName lastName");
+    let changeSummary = `Sanded mail to ${customer.firstName} ${customer.lastName} "subject : ${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+    await ActivityLog.create({
+      customerId: customer._id,
+      performedBy: req.id,
+      action: `mail sent`,
+      changeSummary: changeSummary
+    });
 
     return res.status(200).json({
       success: true,
