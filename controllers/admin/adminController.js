@@ -2938,12 +2938,12 @@ exports.sendCustomerMail = async (req, res) => {
         }
 
         const htmlContent = `
-          <html>
-            <body>
-              <div>${body}</div>
-            </body>
-          </html>
-        `;
+        <html>
+          <body>
+            ${body}
+          </body>
+        </html>
+      `;
 
         const emailResponse = await sendEmail({
           to: customer.email,
