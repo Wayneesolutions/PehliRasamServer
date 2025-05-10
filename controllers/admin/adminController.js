@@ -2924,7 +2924,7 @@ exports.getEmailTemplateById = async (req, res) => {
 
 exports.sendCustomerMail = async (req, res) => {
     try {
-        const { customerId, subject, body, attachments = [], meetingDetails = null } = req.body;
+        const { customerId, subject, body, attachments = [],} = req.body;
         const adminId = req.id;
 
         if (!customerId || !subject || !body) {
@@ -2937,12 +2937,19 @@ exports.sendCustomerMail = async (req, res) => {
             return res.status(404).json({ message: 'Customer not found or missing email.' });
         }
 
+        const htmlContent = `
+          <html>
+            <body>
+              <div>${body}</div>
+            </body>
+          </html>
+        `;
+
         const emailResponse = await sendEmail({
-            to: customer.email,
-            subject,
-            text: body.replace(/<[^>]*>/g, ''), // Strip HTML for plain text
-            html: body,
-            attachments,
+          to: customer.email,
+          subject,
+          html: htmlContent,
+          attachments,
         });
 
         const mailLog = new MailLog({
@@ -2952,7 +2959,6 @@ exports.sendCustomerMail = async (req, res) => {
           sentBy: adminId,
           sentByEmail: process.env.SENDGRID_FROM_EMAIL, 
           deliveryStatus: emailResponse.success ? 'Sent' : 'Failed',
-          meetingDetails,
           attachments: attachments.map(att => ({
             fileName: att.filename || '',
             fileUrl: att.content ? 'Base64' : att.url || '',

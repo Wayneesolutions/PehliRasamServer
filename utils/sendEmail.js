@@ -3,26 +3,25 @@ const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
     host: process.env.SMPT_HOST || 'smtp.gmail.com',
     port: 587,
-    secure: false, // true for port 465, false for 587
+    secure: false,
     auth: {
         user: process.env.SMPT_USERNAME || 'knowthehiccup@gmail.com',
-        pass: process.env.SMPT_PASSWORD || 'Galaxy!-',
+        pass: process.env.SMPT_PASSWORD || 'yerxvspltccderba',
     },
 });
 
-const sendEmail = async ({ to, subject, text = '', html = '', attachments = [] }) => {
-    if (!to || !subject || (!text && !html)) {
+const sendEmail = async ({ to, subject, html = '', attachments = [] }) => {
+    if (!to || !subject || !html) {
         return {
             success: false,
-            error: new Error('Missing required email fields: "to", "subject", and either "text" or "html".')
+            error: new Error('Missing required email fields: "to", "subject", and "html".')
         };
     }
 
     const mailOptions = {
-        from: `"Real Estate" <${process.env.SMPT_USERNAME}>`,
+        from: `"Pehli Rasam" <${process.env.SENDGRID_FROM_EMAIL}>`,
         to,
         subject,
-        text,
         html,
         attachments, // [{ filename, path, contentType }]
     };
