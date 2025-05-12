@@ -270,7 +270,7 @@ router.post("/updatePresetField", checkAdminToken, updatePresetField);
 router.post("/getPresetById", checkAdminToken, getPresetById);
 
 router.post("/createIntro", checkAdminToken, createIntro);
-router.post("/getIntroFieldValues", checkAdminToken, getIntroFieldValues);
+router.post("/getIntroFieldValues", getIntroFieldValues);
 router.get("/getAllIntroSummaries", checkAdminToken, getIntroSummaries);
 router.post("/updateIntroExpiration", checkAdminToken, updateIntroExpiration);
 
