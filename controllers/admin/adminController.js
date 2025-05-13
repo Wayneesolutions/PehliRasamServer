@@ -2050,6 +2050,46 @@ exports.addCustomerPhoto = async (req, res) => {
   }
 };
 
+exports.deleteCustomerPhoto = async (req, res) => {
+  try {
+    const { customerId, photoId } = req.body;
+
+    if (!customerId || !photoId) {
+      return res.status(400).json({
+        success: false,
+        message: 'customerId and photoId are required',
+      });
+    }
+
+    const updatedCustomer = await Customer.findOneAndUpdate(
+      { _id: customerId, isDeleted: false },
+      { $pull: { photos: { _id: photoId } } },
+      { new: true }
+    );
+
+    if (!updatedCustomer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found or photo not removed',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Photo removed',
+      photos: updatedCustomer.photos,
+    });
+
+  } catch (error) {
+    console.error('Error deleting photo by _id:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message,
+    });
+  }
+};
+
 
 
 /////

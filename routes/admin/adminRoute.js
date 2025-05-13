@@ -90,6 +90,7 @@ const {
   deleteMatchGroupValue,
   // getMatchGroupValues,
   addCustomerPhoto,
+  deleteCustomerPhoto,
 
   createEmailTemplate,
   getAllEmailTemplates,
@@ -196,6 +197,7 @@ router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMa
 router.post("/getMatchGroupDetails", checkAdminToken, getMatchGroupDetails)
 router.post("/searchCustomerByName", checkAdminToken, searchCustomerByName)
 router.post("/addCustomerPhoto", checkAdminToken, addCustomerPhoto)
+router.post("/deleteCustomerPhoto", checkAdminToken, deleteCustomerPhoto)
 
 
 router.post("/addCustomerToClientList", checkAdminToken, addCustomerToClientList)
