@@ -52,7 +52,7 @@ exports.deleteCustomer = async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    res.status(200).json({success:false, message: 'Customer deleted successfully', data: deletedCustomer });
+    res.status(200).json({success:true, message: 'Customer deleted successfully', data: deletedCustomer });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
