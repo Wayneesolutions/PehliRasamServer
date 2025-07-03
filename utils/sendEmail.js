@@ -19,7 +19,7 @@ const sendEmail = async ({ to, subject, html = '', attachments = [] }) => {
     }
 
     const mailOptions = {
-        from: `"Pehli Rasam" <${process.env.SENDGRID_FROM_EMAIL}>`,
+        from: `"Pehli Rasam" <${process.env.FROM_EMAIL}>`,
         to,
         subject,
         html,
