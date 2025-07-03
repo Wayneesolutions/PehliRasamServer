@@ -10,8 +10,8 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-const sendEmail = async ({ to, subject, html = '', attachments = [] }) => {
-    if (!to || !subject || !html) {
+const sendEmail = async ({ to, subject, html = '',text = '', attachments = [] }) => {
+    if (!to || !subject || !text || !html) {
         return {
             success: false,
             error: new Error('Missing required email fields: "to", "subject", and "html".')
@@ -22,6 +22,7 @@ const sendEmail = async ({ to, subject, html = '', attachments = [] }) => {
         from: `"Pehli Rasam" <${process.env.FROM_EMAIL}>`,
         to,
         subject,
+        text,
         html,
         attachments, // [{ filename, path, contentType }]
     };
