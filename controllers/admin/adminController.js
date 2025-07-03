@@ -35,6 +35,7 @@ const Preset = require("../../models/customer/Presets/preset");
 const PresetFields = require('../../models/customer/Presets/presetFields');
 const Intro = require("../../models/customer/intro/intro");
 const IntroFields = require("../../models/customer/intro/introFields");
+const he = require('he');
 
 
 
@@ -3062,7 +3063,7 @@ exports.sendMailForIntro = async (req, res) => {
   try {
     const { customerId, introLink, subject, body, extraEmails = [] } = req.body;
     const adminId = req.id;
-
+      console.log('body ==========',req.body)
     if (!customerId || !subject || !body || !introLink) {
       return res.status(400).json({ message: 'customerId, subject, body, and introLink are required.' });
     }
@@ -3082,8 +3083,8 @@ exports.sendMailForIntro = async (req, res) => {
         sendEmail({
           to: email,
           subject,
-          text: body.replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
-          html: `${body}<br/><br/><a href="${introLink}">${introLink}</a>`
+          text: he.decode(body).replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
+          html: `${he.decode(body)}<br/><br/><a href="${introLink}">${introLink}</a>`
         })
       )
     );
@@ -3094,7 +3095,7 @@ exports.sendMailForIntro = async (req, res) => {
       subject,
       body,
       sentBy: adminId,
-      sentByEmail: process.env.SENDGRID_FROM_EMAIL,
+      sentByEmail: process.env.FROM_EMAIL,
       deliveryStatus: sendResults[0]?.success ? 'Sent' : 'Failed'
     });
 

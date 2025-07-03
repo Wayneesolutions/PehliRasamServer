@@ -11,6 +11,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendEmail = async ({ to, subject, html = '',text = '', attachments = [] }) => {
+    console.log('to ====',to,'subject ==== ',subject,'html====  ',html,'text === ',text,'attachments === ',attachments)
     if (!to || !subject || !text || !html) {
         return {
             success: false,
