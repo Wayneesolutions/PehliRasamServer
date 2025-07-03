@@ -46,13 +46,22 @@ exports.deleteCustomer = async (req, res) => {
       return res.status(400).json({ error: 'Customer ID is required' });
     }
 
+    // 1. Delete all intros related to this customer
+    await Intro.deleteMany({ customerId });
+
+    // 2. Delete the customer
     const deletedCustomer = await Customer.findByIdAndDelete(customerId);
 
     if (!deletedCustomer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    res.status(200).json({success:true, message: 'Customer deleted successfully', data: deletedCustomer });
+    res.status(200).json({
+      success: true,
+      message: 'Customer and related intros deleted successfully',
+      data: deletedCustomer
+    });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
