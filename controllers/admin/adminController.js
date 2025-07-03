@@ -727,7 +727,7 @@ exports.uploadFile = async (req, res) => {
         return fileUrl;
       })
     );
-
+    console.log(uploadedFiles)
     res.status(200).json({
       success: true,
       message: "Files uploaded successfully",
@@ -3806,7 +3806,7 @@ exports.getIntroSummaries = async (req, res) => {
       .lean();
 
     if (!intros.length) {
-      return res.status(404).json({
+      return res.json({
         success: false,
         message: "No intros found"
       });
@@ -3816,9 +3816,9 @@ exports.getIntroSummaries = async (req, res) => {
       const customer = intro.customerId;
 
       const fullName = [
-        customer.firstName,
-        customer.middelName,
-        customer.lastName
+        customer?.firstName || 'NA',
+        customer?.middelName || 'NA',
+        customer?.lastName || 'NA'
       ]
         .filter(Boolean) // Remove undefined/null parts
         .join(" ");
