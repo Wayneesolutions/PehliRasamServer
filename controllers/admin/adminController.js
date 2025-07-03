@@ -38,7 +38,25 @@ const IntroFields = require("../../models/customer/intro/introFields");
 
 
 
+exports.deleteCustomer = async (req, res) => {
+  try {
+    const { customerId } = req.params;
 
+    if (!customerId) {
+      return res.status(400).json({ error: 'Customer ID is required' });
+    }
+
+    const deletedCustomer = await Customer.findByIdAndDelete(customerId);
+
+    if (!deletedCustomer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    res.status(200).json({success:false, message: 'Customer deleted successfully', data: deletedCustomer });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 //Admin related section---
 exports.create_admin = async (req, res) => {
   try {

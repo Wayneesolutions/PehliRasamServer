@@ -115,7 +115,8 @@ const {
   updateIntroExpiration,
   getPresetById,
   getIntroSummaries,
-  sendMailForIntro
+  sendMailForIntro,
+  deleteCustomer
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -275,7 +276,7 @@ router.post("/createIntro", checkAdminToken, createIntro);
 router.post("/getIntroFieldValues", getIntroFieldValues);
 router.get("/getAllIntroSummaries", checkAdminToken, getIntroSummaries);
 router.post("/updateIntroExpiration", checkAdminToken, updateIntroExpiration);
-
+router.delete('/delete-customer/:customerId',checkAdminToken,deleteCustomer)
 
 
 
