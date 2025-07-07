@@ -3087,7 +3087,7 @@ exports.sendMailForIntro = async (req, res) => {
           to: email,
           subject,
           text: he.decode(body).replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
-          html: `${he.decode(body)}`
+          html: `${he.decode(body)}<br/><br/><a href="${introLink}"></a>`
         })
       )
     );
@@ -3664,6 +3664,7 @@ exports.createIntro = async (req, res) => {
       sentCount: 0,
       viewed: 0,
       total: 0,
+      link: `${process.env.LINK}/client/${nextIntroId}`,
       expiration: expiration || new Date(),
       profileImage: profileImage || "default_image_path",
     };

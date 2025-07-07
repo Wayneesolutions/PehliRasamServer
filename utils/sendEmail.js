@@ -2,12 +2,19 @@ const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
     host: process.env.SMPT_HOST || 'smtp.gmail.com',
-    port: 587,
-    secure: false,
+    port: 465,
+    secure: true,
     auth: {
         user: process.env.SMPT_USERNAME || 'knowthehiccup@gmail.com',
         pass: process.env.SMPT_PASSWORD || 'yerxvspltccderba',
     },
+});
+transporter.verify(function (error, success) {
+  if (error) {
+    console.log('SMTP connection error:', error);
+  } else {
+    console.log('SMTP is ready to send messages');
+  }
 });
 
 const sendEmail = async ({ to, subject, html = '',text = '', attachments = [] }) => {

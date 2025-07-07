@@ -42,6 +42,10 @@ const introSchema = new mongoose.Schema({
   isDeleted: {
     type: Boolean,
     default: false
+  },
+  link: {
+    type: String,
+    required: true
   }
 });
 
