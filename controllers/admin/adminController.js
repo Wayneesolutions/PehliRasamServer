@@ -2992,6 +2992,7 @@ exports.getEmailTemplateById = async (req, res) => {
 
 exports.sendCustomerMail = async (req, res) => {
     try {
+      console.log(req.body)
         const { customerId, subject, body, attachments = [],} = req.body;
         const adminId = req.id;
 
@@ -3033,6 +3034,7 @@ exports.sendCustomerMail = async (req, res) => {
           }))
         });
 
+
         await mailLog.save();
 
 
@@ -3061,10 +3063,11 @@ exports.sendCustomerMail = async (req, res) => {
 
 exports.sendMailForIntro = async (req, res) => {
   try {
+    
     const { customerId, introLink, subject, body, extraEmails = [] } = req.body;
     const adminId = req.id;
       console.log('body ==========',req.body)
-    if (!customerId || !subject || !body || !introLink) {
+    if (!customerId || !subject || !body ) {
       return res.status(400).json({ message: 'customerId, subject, body, and introLink are required.' });
     }
 
@@ -3076,7 +3079,7 @@ exports.sendMailForIntro = async (req, res) => {
 
     // Collect all recipients
     const recipients = [customer.email, ...extraEmails];
-
+ 
     // Send email to each recipient
     const sendResults = await Promise.all(
       recipients.map(email =>
@@ -3084,7 +3087,7 @@ exports.sendMailForIntro = async (req, res) => {
           to: email,
           subject,
           text: he.decode(body).replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
-          html: `${he.decode(body)}<br/><br/><a href="${introLink}">${introLink}</a>`
+          html: `${he.decode(body)}`
         })
       )
     );
@@ -3662,7 +3665,6 @@ exports.createIntro = async (req, res) => {
       viewed: 0,
       total: 0,
       expiration: expiration || new Date(),
-      link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
       profileImage: profileImage || "default_image_path",
     };
 
@@ -3696,7 +3698,7 @@ exports.createIntro = async (req, res) => {
     console.error("Error creating intro:", error);
     res.status(500).json({
       success: false,
-      message: "Error creating intro and fields.",
+      message: error.message,
       error: error.message,
     });
   }
