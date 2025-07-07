@@ -3664,7 +3664,7 @@ exports.createIntro = async (req, res) => {
       sentCount: 0,
       viewed: 0,
       total: 0,
-      link: `https://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
+      link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
       expiration: expiration || new Date(),
       profileImage: profileImage || "default_image_path",
     };
