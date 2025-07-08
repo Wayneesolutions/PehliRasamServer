@@ -25,11 +25,12 @@ const sendEmail = async ({ to, subject, html = '',text = '', attachments = [] })
             error: new Error('Missing required email fields: "to", "subject", and "html".')
         };
     }
+     const cleanSubject = subject.replace(/(<([^>]+)>)/gi, '').trim();
 
     const mailOptions = {
         from: `"Pehli Rasam" <${process.env.FROM_EMAIL}>`,
         to,
-        subject,
+        subject:cleanSubject,
         text,
         html,
         attachments, // [{ filename, path, contentType }]

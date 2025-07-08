@@ -14,12 +14,12 @@ const customerRoute = require('./routes/customer/customerRoute');
 
 // Enable express parser for parsing JSON request bodies
 app.use(express.json({ 
-  limit: "50mb",
+  limit: "100mb",
   verify: (req, res, buf) => { req.rawBody = buf } // Store raw body for webhooks
 }));
 
 // Parse URL-encoded bodies
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
 // Serve static files from the uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
