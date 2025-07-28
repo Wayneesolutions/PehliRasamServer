@@ -3653,9 +3653,11 @@ exports.createIntro = async (req, res) => {
         message: `Invalid fieldsFor value. Only 'Preferences' or 'Profile' are allowed.`,
       });
     }
+    const latestIntro = await Intro.findOne({}, {}, { sort: { introId: -1 } });
+    const lastId = latestIntro ? parseInt(latestIntro.introId) : 0;
 
-    const introCount = await Intro.countDocuments();
-    const nextIntroId = (introCount + 1).toString().padStart(5, "0"); // Example: "00001"
+    // const introCount = await Intro.countDocuments();
+    const nextIntroId = (lastId + 1).toString().padStart(5, "0");
 
     const introData = {
       introId: nextIntroId,
