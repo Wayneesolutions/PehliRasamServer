@@ -3654,8 +3654,47 @@ exports.createIntro = async (req, res) => {
       });
     }
 
-    const introCount = await Intro.countDocuments();
-    const nextIntroId = (introCount + 1).toString().padStart(5, "0"); // Example: "00001"
+    let nextIntroId;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (attempts < maxAttempts) {
+      try {
+        const allIntros = await Intro.find({}, { introId: 1 }).lean();
+        const lastIntro = allIntros.length > 0
+          ? allIntros.reduce((max, current) =>
+            parseInt(current.introId) > parseInt(max.introId) ? current : max
+          )
+          : null;
+
+        if (lastIntro) {
+          const lastIdNumber = parseInt(lastIntro.introId);
+          nextIntroId = (lastIdNumber + 1).toString().padStart(5, "0");
+        } else {
+          nextIntroId = "00001";
+        }
+
+
+        const existingIntro = await Intro.findOne({ introId: nextIntroId });
+        if (!existingIntro) {
+          break;
+        }
+
+        attempts++;
+      } catch (error) {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          throw new Error("Failed to generate unique intro ID after multiple attempts");
+        }
+      }
+    }
+
+    if (attempts >= maxAttempts) {
+      return res.status(500).json({
+        success: false,
+        message: "Unable to generate unique intro ID. Please try again.",
+      });
+    }
 
     const introData = {
       introId: nextIntroId,
@@ -3704,6 +3743,8 @@ exports.createIntro = async (req, res) => {
     });
   }
 };
+
+  
 
 exports.getIntroFieldValues = async (req, res) => {
   try {
