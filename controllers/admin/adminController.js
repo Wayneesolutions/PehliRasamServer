@@ -3670,10 +3670,23 @@ exports.createIntro = async (req, res) => {
       expiration: expiration || new Date(),
       profileImage: profileImage || "default_image_path",
     };
-
+    
     const newIntro = new Intro(introData);
     await newIntro.save();
-
+ 
+    const customer = await Customer.findOne({_id:customerId})
+    const cname = customer.firstName+' '+customer.middelName+' '+customer.lastName
+    const admin = await Admin.findOne({_id:req.id})
+    const aname = admin.firstName+' '+admin.lastName
+     const activityData = {
+      customerId:customerId,
+      performedBy:req.id,
+      action:"Intro generated",
+      changeSummary:`${cname} created ${newIntro.link} by Admin ${aname}`
+     }
+     const newActiviy = new ActivityLog(activityData)
+     await newActiviy.save()
+     
     const introFieldsPromises = fields.map(async (field) => {
       const newField = new IntroFields({
         fieldId: field.fieldId,
