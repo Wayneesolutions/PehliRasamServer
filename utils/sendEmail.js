@@ -2,23 +2,35 @@ const nodemailer = require('nodemailer');
 
 // Check if environment variables are set
 const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 465;
+const smtpSecure = process.env.SMTP_SECURE !== 'false'; // Default to true unless explicitly set to 'false'
 const smtpUsername = process.env.SMTP_USERNAME;
 const smtpPassword = process.env.SMTP_PASSWORD;
+
+// Debug logging (remove sensitive data)
+if (smtpHost && smtpUsername) {
+    console.log(`📧 SMTP Config: Host=${smtpHost}, Port=${smtpPort}, Secure=${smtpSecure}, User=${smtpUsername.substring(0, 3)}***`);
+}
 
 if (!smtpUsername || !smtpPassword) {
     console.warn('⚠️  SMTP credentials not found in environment variables.');
     console.warn('   Please set SMTP_USERNAME and SMTP_PASSWORD in your .env file.');
     console.warn('   For Gmail: Enable 2-Step Verification and use an App Password.');
+    console.warn('   For custom mail servers: Check SMTP_PORT and SMTP_SECURE settings.');
 }
 
 const transporter = nodemailer.createTransport({
     host: smtpHost,
-    port: 465,
-    secure: true,
+    port: smtpPort,
+    secure: smtpSecure, // true for 465, false for other ports
     auth: smtpUsername && smtpPassword ? {
         user: smtpUsername,
         pass: smtpPassword,
     } : undefined,
+    // Additional options for custom mail servers
+    tls: {
+        rejectUnauthorized: false // Some custom mail servers have self-signed certificates
+    }
 });
 
 // Verify SMTP connection (non-blocking)
