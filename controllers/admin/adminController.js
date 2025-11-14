@@ -3745,16 +3745,16 @@ exports.createIntro = async (req, res) => {
     const lastId = latestIntro ? parseInt(latestIntro.introId) : 0;
 
     // const introCount = await Intro.countDocuments();
-    const nextIntroId = (lastId + 1).toString().padStart(5, "0");
+    const nextIntroIds = (lastId + 1).toString().padStart(5, "0");
 
     const introData = {
-      introId: nextIntroId,
+      introId: nextIntroIds,
       customerId: customerId,
       createdAt: new Date(),
       sentCount: 0,
       viewed: 0,
       total: 0,
-      link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
+      link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroIds}`,
       expiration: expiration || new Date(),
       profileImage: profileImage || "default_image_path",
     };
