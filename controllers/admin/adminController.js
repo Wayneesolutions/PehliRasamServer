@@ -3700,6 +3700,8 @@ exports.createIntro = async (req, res) => {
       return await newField.save();
     });
 
+
+    
     await Promise.all(introFieldsPromises);
 
     res.status(201).json({
