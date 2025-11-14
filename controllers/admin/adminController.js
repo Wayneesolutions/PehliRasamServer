@@ -3066,7 +3066,7 @@ exports.sendMailForIntro = async (req, res) => {
 
     const { customerId, introLink, subject, body, extraEmails = [] } = req.body;
     const adminId = req.id;
-    console.log('body ==========', req.body)
+    console.log('body', req.body)
     if (!customerId || !subject || !body) {
       return res.status(400).json({ message: 'customerId, subject, body, and introLink are required.' });
     }
@@ -3721,6 +3721,93 @@ exports.createIntro = async (req, res) => {
     });
   }
 };
+
+exports.createIntro = async (req, res) => {
+  try {
+    const { expiration, profileImage, fields, customerId } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    const validFieldsForValues = ["Preferences", "Profile"];
+    const invalidFields = fields.filter(field => !validFieldsForValues.includes(field.fieldsFor));
+    if (invalidFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid fieldsFor value. Only 'Preferences' or 'Profile' are allowed.`,
+      });
+    }
+    const latestIntro = await Intro.findOne({}, {}, { sort: { introId: -1 } });
+    const lastId = latestIntro ? parseInt(latestIntro.introId) : 0;
+
+    // const introCount = await Intro.countDocuments();
+    const nextIntroId = (lastId + 1).toString().padStart(5, "0");
+
+    const introData = {
+      introId: nextIntroId,
+      customerId: customerId,
+      createdAt: new Date(),
+      sentCount: 0,
+      viewed: 0,
+      total: 0,
+      link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
+      expiration: expiration || new Date(),
+      profileImage: profileImage || "default_image_path",
+    };
+    
+    const newIntro = new Intro(introData);
+    await newIntro.save();
+ 
+    const customer = await Customer.findOne({_id:customerId})
+    const cname = customer.firstName+' '+customer.middelName+' '+customer.lastName
+    const admin = await Admin.findOne({_id:req.id})
+    const aname = admin.firstName+' '+admin.lastName
+     const activityData = {
+      customerId:customerId,
+      performedBy:req.id,
+      action:"Intro generated",
+      changeSummary:`${cname} created ${newIntro.link} by Admin ${aname}`
+     }
+     const newActiviy = new ActivityLog(activityData)
+     await newActiviy.save()
+     
+    const introFieldsPromises = fields.map(async (field) => {
+      const newField = new IntroFields({
+        fieldId: field.fieldId,
+        fieldsFor: field.fieldsFor,
+        editedBy: field.editedBy,
+        createdBy: field.createdBy,
+        isDeleted: field.isDeleted || false,
+        introId: newIntro._id,
+      });
+
+      return await newField.save();
+    });
+
+    await Promise.all(introFieldsPromises);
+
+    res.status(201).json({
+      success: true,
+      message: "Intro and fields created successfully!",
+      data: {
+        intro: newIntro,
+        fields: fields,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating intro:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: error.message,
+    });
+  }
+};
+  
 
 exports.getIntroFieldValues = async (req, res) => {
   try {
