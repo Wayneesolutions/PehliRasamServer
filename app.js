@@ -64,8 +64,8 @@ app.get('/health', (req, res) => {
 });
 
 //API section
-app.use('/api/v1/admin', adminRoute);
-app.use('/api/v1/client', customerRoute);
+app.use('/be/api/v1/admin', adminRoute);
+app.use('/be/api/v1/client', customerRoute);
 
 // Global error handler
 app.use(errorHandler);
