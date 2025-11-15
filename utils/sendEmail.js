@@ -7,21 +7,14 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 
 let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword;
 
-if (isDevelopment) {
-    // DEVELOPMENT: Use DEV-specific variables, or fallback to EMAIL_USER/EMAIL_PASS
-    smtpHost = process.env.SMTP_HOST_DEV || 'smtp.gmail.com';
-    smtpPort = process.env.SMTP_PORT_DEV ? parseInt(process.env.SMTP_PORT_DEV) : 465;
-    smtpSecure = process.env.SMTP_SECURE_DEV === 'true' ? true : (process.env.SMTP_SECURE_DEV === 'false' ? false : true);
-    smtpUsername = process.env.SMTP_USERNAME_DEV || process.env.EMAIL_USER;
-    smtpPassword = process.env.SMTP_PASSWORD_DEV || process.env.EMAIL_PASS;
-} else {
+
     // PRODUCTION: Use production SMTP variables only
     smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
     smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
     smtpSecure = process.env.SMTP_SECURE === 'true' ? true : (process.env.SMTP_SECURE === 'false' ? false : false);
     smtpUsername = process.env.SMTP_USERNAME;
     smtpPassword = process.env.SMTP_PASSWORD;
-}
+
 
 // Set defaults if not provided
 if (!smtpPort || smtpPort === 0 || isNaN(smtpPort)) {
