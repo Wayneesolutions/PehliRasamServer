@@ -1,34 +1,33 @@
 const nodemailer = require('nodemailer');
 
 // Check if environment variables are set
-// For local development, use Gmail. For production, use hosting provider
+// Development: Uses SMTP_*_DEV variables, falls back to EMAIL_USER/EMAIL_PASS
+// Production: Uses SMTP_* variables only
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword;
 
 if (isDevelopment) {
-    // Local development - use Gmail or development SMTP
-    smtpHost = process.env.SMTP_HOST_DEV || process.env.SMTP_HOST || 'smtp.gmail.com';
-    smtpPort = process.env.SMTP_PORT_DEV ? parseInt(process.env.SMTP_PORT_DEV) : (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 465);
-    smtpSecure = process.env.SMTP_SECURE_DEV !== undefined ? process.env.SMTP_SECURE_DEV === 'true' : (process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : true);
-    smtpUsername = process.env.SMTP_USERNAME_DEV || process.env.EMAIL_USER || process.env.SMTP_USERNAME;
-    smtpPassword = process.env.SMTP_PASSWORD_DEV || process.env.EMAIL_PASS || process.env.SMTP_PASSWORD;
+    // DEVELOPMENT: Use DEV-specific variables, or fallback to EMAIL_USER/EMAIL_PASS
+    smtpHost = process.env.SMTP_HOST_DEV || 'smtp.gmail.com';
+    smtpPort = process.env.SMTP_PORT_DEV ? parseInt(process.env.SMTP_PORT_DEV) : 465;
+    smtpSecure = process.env.SMTP_SECURE_DEV === 'true' ? true : (process.env.SMTP_SECURE_DEV === 'false' ? false : true);
+    smtpUsername = process.env.SMTP_USERNAME_DEV || process.env.EMAIL_USER;
+    smtpPassword = process.env.SMTP_PASSWORD_DEV || process.env.EMAIL_PASS;
 } else {
-    // Production - use hosting provider SMTP
+    // PRODUCTION: Use production SMTP variables only
     smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-    smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : null;
-    smtpSecure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : null;
+    smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
+    smtpSecure = process.env.SMTP_SECURE === 'true' ? true : (process.env.SMTP_SECURE === 'false' ? false : false);
     smtpUsername = process.env.SMTP_USERNAME;
     smtpPassword = process.env.SMTP_PASSWORD;
 }
 
-// Auto-detect port and security settings if not specified (common hosting provider defaults)
-if (!smtpPort) {
-    // Try port 587 (STARTTLS) first for hosting providers, fallback to 465 (SSL)
-    smtpPort = 587;
+// Set defaults if not provided
+if (!smtpPort || smtpPort === 0 || isNaN(smtpPort)) {
+    smtpPort = smtpHost.includes('gmail.com') ? 465 : 587;
 }
-if (smtpSecure === null) {
-    // Port 465 uses SSL (secure: true), port 587 uses STARTTLS (secure: false)
+if (smtpSecure === undefined || smtpSecure === null) {
     smtpSecure = smtpPort === 465;
 }
 
@@ -52,15 +51,21 @@ if (smtpHost && smtpUsername) {
 } else {
     console.warn('⚠️  SMTP_HOST or SMTP_USERNAME not found in environment variables.');
     if (isDevelopment) {
-        console.warn('   For local development, set EMAIL_USER and EMAIL_PASS, or SMTP_USERNAME_DEV and SMTP_PASSWORD_DEV');
+        console.warn('   For DEVELOPMENT: Set EMAIL_USER and EMAIL_PASS, or SMTP_*_DEV variables');
+    } else {
+        console.warn('   For PRODUCTION: Set SMTP_HOST, SMTP_USERNAME, and SMTP_PASSWORD');
     }
 }
 
 if (!smtpUsername || !smtpPassword) {
     console.warn('⚠️  SMTP credentials not found in environment variables.');
-    console.warn('   Please set SMTP_USERNAME and SMTP_PASSWORD in your .env file.');
-    console.warn('   For Gmail: Enable 2-Step Verification and use an App Password.');
-    console.warn('   For hosting providers: Check SMTP_PORT (usually 587 or 465) and SMTP_SECURE settings.');
+    if (isDevelopment) {
+        console.warn('   DEVELOPMENT: Set EMAIL_USER and EMAIL_PASS, or SMTP_USERNAME_DEV and SMTP_PASSWORD_DEV');
+        console.warn('   For Gmail: Enable 2-Step Verification and use an App Password.');
+    } else {
+        console.warn('   PRODUCTION: Set SMTP_USERNAME and SMTP_PASSWORD');
+        console.warn('   For hosting providers: Check SMTP_PORT (usually 587 or 465) and SMTP_SECURE settings.');
+    }
 }
 
 const transporter = nodemailer.createTransport({
@@ -85,7 +90,6 @@ const transporter = nodemailer.createTransport({
 
 // Verify SMTP connection (non-blocking)
 transporter.verify(function (error, success) {
-    console.log('success ==== ', success, 'error ==== ', error);
     if (error) {
         console.error('❌ SMTP connection error:', error.message);
         if (error.code === 'EAUTH') {
@@ -143,7 +147,7 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [] }
 
     // Use appropriate FROM_EMAIL based on environment
     const fromEmail = isDevelopment 
-        ? (process.env.FROM_EMAIL_DEV || process.env.EMAIL_USER || process.env.FROM_EMAIL || smtpUsername)
+        ? (process.env.FROM_EMAIL_DEV || process.env.EMAIL_USER || smtpUsername)
         : (process.env.FROM_EMAIL || smtpUsername);
     
     const mailOptions = {
