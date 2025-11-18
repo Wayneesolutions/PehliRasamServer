@@ -3447,6 +3447,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
+                  presetFieldId: field._id, // Add PresetFields document ID
                   id: field.fieldsId,
                   Label: fieldData.attributeName,
                   Kind: "profile",
@@ -3463,6 +3464,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
 
               if (fieldData) {
                 return {
+                  presetFieldId: field._id, // Add PresetFields document ID
                   id: field.fieldsId,
                   Label: fieldData.label,
                   Kind: "preference",
@@ -3473,11 +3475,11 @@ exports.getAllPresetsWithFields = async (req, res) => {
               }
             }
 
-            return null; // No matching field data found
+            return null;
           })
         );
 
-        const finalFormattedFields = formattedFields.filter(Boolean); // remove nulls
+        const finalFormattedFields = formattedFields.filter(Boolean);
 
         return {
           ...preset,
@@ -3695,6 +3697,8 @@ exports.createIntro = async (req, res) => {
         createdBy: field.createdBy,
         isDeleted: field.isDeleted || false,
         introId: newIntro._id,
+        AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
+        isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
       });
 
       return await newField.save();
@@ -3793,6 +3797,18 @@ exports.getIntroFieldValues = async (req, res) => {
         });
         fieldValue = valueDoc ? valueDoc.value : null;
 
+        result.push({
+          fieldName,
+          value: fieldValue,
+          fieldsFor: field.fieldsFor,
+          AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
+          isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
+          fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
+          groupId: valueDoc ? (valueDoc.groupId ? valueDoc.groupId.toString() : null) : (formField.form_group_id ? formField.form_group_id.toString() : null),  // Group ID for updating
+          attributeType: formField.attributeType || 'text',  // Field type for rendering, default to text
+          attributeOption: formField.attributeOption || [],  // Options for select/radio
+        });
+
       } else if (field.fieldsFor === "Preferences") {
         const prefField = await PreferencesFields.findById(field.fieldId);
         if (!prefField) continue;
@@ -3803,13 +3819,19 @@ exports.getIntroFieldValues = async (req, res) => {
           customerId: intro.customerId,
         });
         fieldValue = valueDoc ? valueDoc.value : null;
-      }
 
-      result.push({
-        fieldName,
-        value: fieldValue,
-        fieldsFor: field.fieldsFor
-      });
+        result.push({
+          fieldName,
+          value: fieldValue,
+          fieldsFor: field.fieldsFor,
+          AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
+          isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
+          fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
+          preferencesGroupId: valueDoc ? (valueDoc.preferencesGroupId ? valueDoc.preferencesGroupId.toString() : null) : (prefField.preferencesGroupId ? prefField.preferencesGroupId.toString() : null),  // Group ID for updating
+          profileField: prefField.profileField || 'text',  // Field type for rendering, default to text
+          choices: prefField.choices || [],  // Options for select/radio
+        });
+      }
     }
 
     res.status(200).json({

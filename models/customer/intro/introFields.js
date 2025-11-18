@@ -24,6 +24,14 @@ const introFieldsSchema = new mongoose.Schema({
   introId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Intro", // Refers to the Intro model
+  },
+  AllowEdit: {
+    type: Boolean,
+    default: true,
+  },
+  isRequired: {
+    type: Boolean,
+    default: false,
   }
 }, { timestamps: true });
 
