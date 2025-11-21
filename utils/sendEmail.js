@@ -11,7 +11,7 @@ let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword,fromEmail;
 // PRODUCTION SERVER: Use production SMTP variables only
 fromEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
 smtpHost = process.env.SMTP_HOST || 'mail.pehlirasam.com';
-smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
+smtpPort =  587;
 // Convert SMTP_SECURE to boolean properly
 smtpSecure = false
 smtpUsername = process.env.SMTP_USERNAME || 'info@pehlirasam.com';
