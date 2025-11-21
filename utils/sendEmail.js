@@ -1,14 +1,15 @@
 const nodemailer = require('nodemailer');
 
-// Check if environment variables are set
-// Development: Uses SMTP_*_DEV variables, falls back to EMAIL_USER/EMAIL_PASS
-// Production: Uses SMTP_* variables only
-const isDevelopment = process.env.NODE_ENV === 'development';
-
-let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword;
+// Auto-detect if running locally or on production server
+// Priority: EMAIL_USER presence > NODE_ENV > hostname detection
+// If EMAIL_USER exists, assume local development (allows using production DB with Gmail SMTP)
 
 
-    // PRODUCTION: Use production SMTP variables only
+let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword,fromEmail;
+
+
+    // PRODUCTION SERVER: Use production SMTP variables only
+    fromEmail = process.env.FROM_EMAIL;
     smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
     smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
     smtpSecure = process.env.SMTP_SECURE === 'true' ? true : (process.env.SMTP_SECURE === 'false' ? false : false);
@@ -16,50 +17,7 @@ let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword;
     smtpPassword = process.env.SMTP_PASSWORD;
 
 
-// Set defaults if not provided
-if (!smtpPort || smtpPort === 0 || isNaN(smtpPort)) {
-    smtpPort = smtpHost.includes('gmail.com') ? 465 : 587;
-}
-if (smtpSecure === undefined || smtpSecure === null) {
-    smtpSecure = smtpPort === 465;
-}
 
-// Debug logging (remove sensitive data)
-if (smtpHost && smtpUsername) {
-    const passwordLength = smtpPassword ? smtpPassword.length : 0;
-    const passwordPreview = smtpPassword ? (smtpPassword.substring(0, 2) + '***' + smtpPassword.substring(smtpPassword.length - 2)) : 'NOT_SET';
-    const envMode = isDevelopment ? 'DEV' : 'PROD';
-    console.log(`📧 SMTP Config [${envMode}]: Host=${smtpHost}, Port=${smtpPort}, Secure=${smtpSecure}, User=${smtpUsername}, PasswordLength=${passwordLength}`);
-    console.log(`📧 Password Preview: ${passwordPreview}`);
-    
-    // Check for common issues
-    if (smtpPassword) {
-        if (smtpPassword.includes(' ')) {
-            console.warn('⚠️  WARNING: Password contains spaces - this might cause authentication issues!');
-        }
-        if (smtpPassword !== smtpPassword.trim()) {
-            console.warn('⚠️  WARNING: Password has leading/trailing spaces - trimming...');
-        }
-    }
-} else {
-    console.warn('⚠️  SMTP_HOST or SMTP_USERNAME not found in environment variables.');
-    if (isDevelopment) {
-        console.warn('   For DEVELOPMENT: Set EMAIL_USER and EMAIL_PASS, or SMTP_*_DEV variables');
-    } else {
-        console.warn('   For PRODUCTION: Set SMTP_HOST, SMTP_USERNAME, and SMTP_PASSWORD');
-    }
-}
-
-if (!smtpUsername || !smtpPassword) {
-    console.warn('⚠️  SMTP credentials not found in environment variables.');
-    if (isDevelopment) {
-        console.warn('   DEVELOPMENT: Set EMAIL_USER and EMAIL_PASS, or SMTP_USERNAME_DEV and SMTP_PASSWORD_DEV');
-        console.warn('   For Gmail: Enable 2-Step Verification and use an App Password.');
-    } else {
-        console.warn('   PRODUCTION: Set SMTP_USERNAME and SMTP_PASSWORD');
-        console.warn('   For hosting providers: Check SMTP_PORT (usually 587 or 465) and SMTP_SECURE settings.');
-    }
-}
 
 const transporter = nodemailer.createTransport({
     host: smtpHost,
@@ -138,10 +96,7 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [] }
     }
      const cleanSubject = subject.replace(/(<([^>]+)>)/gi, '').trim();
 
-    // Use appropriate FROM_EMAIL based on environment
-    const fromEmail = isDevelopment 
-        ? (process.env.FROM_EMAIL_DEV || process.env.EMAIL_USER || smtpUsername)
-        : (process.env.FROM_EMAIL || smtpUsername);
+    
     
     const mailOptions = {
         from: `"Pehli Rasam" <${fromEmail}>`,

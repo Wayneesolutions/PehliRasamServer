@@ -105,27 +105,49 @@ exports.login_admin = async (req, res) => {
     // Basic input validation
     const { email, password } = req.body;
 
+    console.log('Login attempt:', { email, passwordLength: password?.length });
+
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({ error: "Email and password are required" });
     }
 
     // Sanitize email
     const sanitizedEmail = email.trim().toLowerCase();
+    console.log('Sanitized email:', sanitizedEmail);
 
     // Check if admin exists
     const admin = await Admin.findOne({ email: sanitizedEmail, isDeleted: false });
     if (!admin) {
+      console.log('Admin not found or deleted:', sanitizedEmail);
+      // Check if admin exists but is deleted
+      const deletedAdmin = await Admin.findOne({ email: sanitizedEmail });
+      if (deletedAdmin) {
+        console.log('Admin exists but is deleted');
+      }
       return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    console.log('Admin found:', { id: admin._id, email: admin.email, status: admin.status });
+
+    // Check admin status
+    if (admin.status && admin.status !== 'active') {
+      console.log('Admin status is not active:', admin.status);
+      return res.status(403).json({ error: `Admin account is ${admin.status}` });
     }
 
     // Check if password is correct
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) {
+      console.log('Password mismatch for admin:', admin.email);
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
+    console.log('Password matched successfully');
+
     // Check if tempTime has expired (for temporary admins)
     if (admin.tempTime && new Date(admin.tempTime) < new Date()) {
+      console.log('Admin access expired');
       return res.status(403).json({ error: "Admin access expired" });
     }
 
