@@ -8,13 +8,40 @@ const nodemailer = require('nodemailer');
 let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword,fromEmail;
 
 
-    // PRODUCTION SERVER: Use production SMTP variables only
-    fromEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
-    smtpHost = process.env.SMTP_HOST || 'mail.pehlirasam.com';
-    smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
-    smtpSecure = process.env.SMTP_SECURE || false;
-    smtpUsername = process.env.SMTP_USERNAME || 'info@pehlirasam.com';
-    smtpPassword = process.env.SMTP_PASSWORD || 'Infopehilirasam123';
+// PRODUCTION SERVER: Use production SMTP variables only
+fromEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
+smtpHost = process.env.SMTP_HOST || 'mail.pehlirasam.com';
+smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
+// Convert SMTP_SECURE to boolean properly
+smtpSecure = process.env.SMTP_SECURE === 'true' ? true : (process.env.SMTP_SECURE === 'false' ? false : (smtpPort === 465 ? true : false));
+smtpUsername = process.env.SMTP_USERNAME || 'info@pehlirasam.com';
+smtpPassword = process.env.SMTP_PASSWORD || 'Infopehilirasam123';
+
+// Debug logging (without sensitive data)
+if (smtpHost && smtpUsername) {
+    const passwordLength = smtpPassword ? smtpPassword.length : 0;
+    const usernamePreview = smtpUsername ? smtpUsername.substring(0, 3) + '***' : 'NOT_SET';
+    console.log(`📧 SMTP Config [PROD]: Host=${smtpHost}, Port=${smtpPort}, Secure=${smtpSecure}, User=${usernamePreview}, PasswordLength=${passwordLength}`);
+    
+    // Check for common issues
+    if (smtpPassword) {
+        if (smtpPassword.includes(' ')) {
+            console.warn('⚠️  WARNING: Password contains spaces - this might cause authentication issues!');
+        }
+        if (smtpPassword !== smtpPassword.trim()) {
+            console.warn('⚠️  WARNING: Password has leading/trailing spaces - trimming...');
+        }
+    }
+} else {
+    console.warn('⚠️  SMTP_HOST or SMTP_USERNAME not found in environment variables.');
+    console.warn('   Please set SMTP_HOST, SMTP_USERNAME, and SMTP_PASSWORD in your .env file.');
+}
+
+if (!smtpUsername || !smtpPassword) {
+    console.warn('⚠️  SMTP credentials not found in environment variables.');
+    console.warn('   PRODUCTION: Set SMTP_USERNAME and SMTP_PASSWORD');
+    console.warn('   For hosting providers: Check SMTP_PORT (usually 587 or 465) and SMTP_SECURE settings.');
+}
 
 
 
@@ -53,6 +80,22 @@ transporter.verify(function (error, success) {
             console.error('      - Check your hosting provider\'s SMTP documentation');
             console.error('   4. For Gmail: Use an App Password (not your regular password)');
             console.error(`   Current config: ${smtpHost}:${smtpPort}, Secure=${smtpSecure}`);
+        } else if (error.code === 'ESOCKET' || error.message.includes('wrong version number')) {
+            console.error('   SSL/TLS Configuration Error:');
+            console.error('   This usually means a mismatch between port and security settings.');
+            console.error(`   Current: Port=${smtpPort}, Secure=${smtpSecure}`);
+            console.error('\n💡 Fix:');
+            if (smtpPort === 587) {
+                console.error('   Port 587 requires STARTTLS (not SSL)');
+                console.error('   Set in .env: SMTP_PORT=587 and SMTP_SECURE=false');
+            } else if (smtpPort === 465) {
+                console.error('   Port 465 requires SSL (not STARTTLS)');
+                console.error('   Set in .env: SMTP_PORT=465 and SMTP_SECURE=true');
+            } else {
+                console.error('   Try one of these configurations:');
+                console.error('   Option 1: SMTP_PORT=587, SMTP_SECURE=false (STARTTLS)');
+                console.error('   Option 2: SMTP_PORT=465, SMTP_SECURE=true (SSL)');
+            }
         } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
             console.error('   Connection failed. Please check:');
             console.error(`   1. SMTP_HOST (${smtpHost}) is correct`);
