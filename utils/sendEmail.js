@@ -11,17 +11,24 @@ let smtpHost, smtpPort, smtpSecure, smtpUsername, smtpPassword,fromEmail;
 // PRODUCTION SERVER: Use production SMTP variables only
 fromEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
 smtpHost = process.env.SMTP_HOST || 'mail.pehlirasam.com';
-smtpPort =  465;
+smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 465;
 // Convert SMTP_SECURE to boolean properly
-smtpSecure = true
+smtpSecure = process.env.SMTP_SECURE === 'true' ? true : (process.env.SMTP_SECURE === 'false' ? false : (smtpPort === 465 ? true : false));
 smtpUsername = process.env.SMTP_USERNAME || 'info@pehlirasam.com';
 smtpPassword = process.env.SMTP_PASSWORD || 'Infopehilirasam123';
+
+// Remove any whitespace from password (common issue)
+if (smtpPassword) {
+    smtpPassword = smtpPassword.trim();
+}
 
 // Debug logging (without sensitive data)
 if (smtpHost && smtpUsername) {
     const passwordLength = smtpPassword ? smtpPassword.length : 0;
     const usernamePreview = smtpUsername ? smtpUsername.substring(0, 3) + '***' : 'NOT_SET';
+    const passwordPreview = smtpPassword ? (smtpPassword.substring(0, 2) + '***' + smtpPassword.substring(smtpPassword.length - 2)) : 'NOT_SET';
     console.log(`📧 SMTP Config [PROD]: Host=${smtpHost}, Port=${smtpPort}, Secure=${smtpSecure}, User=${usernamePreview}, PasswordLength=${passwordLength}`);
+    console.log(`📧 Password Preview: ${passwordPreview}`);
     
     // Check for common issues
     if (smtpPassword) {
@@ -31,6 +38,8 @@ if (smtpHost && smtpUsername) {
         if (smtpPassword !== smtpPassword.trim()) {
             console.warn('⚠️  WARNING: Password has leading/trailing spaces - trimming...');
         }
+        // Show first and last characters to help verify
+        console.log(`📧 Password starts with: "${smtpPassword.substring(0, 3)}" and ends with: "${smtpPassword.substring(smtpPassword.length - 3)}"`);
     }
 } else {
     console.warn('⚠️  SMTP_HOST or SMTP_USERNAME not found in environment variables.');
