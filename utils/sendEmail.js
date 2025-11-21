@@ -13,7 +13,7 @@ fromEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
 smtpHost = process.env.SMTP_HOST || 'mail.pehlirasam.com';
 smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
 // Convert SMTP_SECURE to boolean properly
-smtpSecure = process.env.SMTP_SECURE === 'true' ? true : (process.env.SMTP_SECURE === 'false' ? false : (smtpPort === 465 ? true : false));
+smtpSecure = false
 smtpUsername = process.env.SMTP_USERNAME || 'info@pehlirasam.com';
 smtpPassword = process.env.SMTP_PASSWORD || 'Infopehilirasam123';
 
