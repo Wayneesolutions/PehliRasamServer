@@ -1,3 +1,6 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+
 module.exports = {
   apps: [
     {
@@ -9,8 +12,8 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: "production"
-        // SMTP settings should come from .env file, not hardcoded here
-        // Remove hardcoded SMTP settings to use .env file instead
+        // SMTP settings should come from .env file
+        // The server.js file loads .env using dotenv
       },
       error_file: './logs/pm2-error.log',
       out_file: './logs/pm2-out.log',

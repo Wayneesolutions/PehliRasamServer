@@ -23,12 +23,26 @@ if (smtpPassword) {
 }
 
 // Debug logging (without sensitive data)
+console.log('\n📧 ========== SMTP Configuration Check ==========');
+console.log('Environment Variables Check:');
+console.log(`  SMTP_HOST from env: ${process.env.SMTP_HOST ? 'SET' : 'NOT SET'}`);
+console.log(`  SMTP_PORT from env: ${process.env.SMTP_PORT ? process.env.SMTP_PORT : 'NOT SET'}`);
+console.log(`  SMTP_SECURE from env: ${process.env.SMTP_SECURE ? process.env.SMTP_SECURE : 'NOT SET'}`);
+console.log(`  SMTP_USERNAME from env: ${process.env.SMTP_USERNAME ? 'SET' : 'NOT SET'}`);
+console.log(`  SMTP_PASSWORD from env: ${process.env.SMTP_PASSWORD ? 'SET (length: ' + process.env.SMTP_PASSWORD.length + ')' : 'NOT SET'}`);
+console.log(`  FROM_EMAIL from env: ${process.env.FROM_EMAIL ? 'SET' : 'NOT SET'}`);
+
 if (smtpHost && smtpUsername) {
     const passwordLength = smtpPassword ? smtpPassword.length : 0;
     const usernamePreview = smtpUsername ? smtpUsername.substring(0, 3) + '***' : 'NOT_SET';
     const passwordPreview = smtpPassword ? (smtpPassword.substring(0, 2) + '***' + smtpPassword.substring(smtpPassword.length - 2)) : 'NOT_SET';
-    console.log(`📧 SMTP Config [PROD]: Host=${smtpHost}, Port=${smtpPort}, Secure=${smtpSecure}, User=${usernamePreview}, PasswordLength=${passwordLength}`);
-    console.log(`📧 Password Preview: ${passwordPreview}`);
+    console.log(`\n📧 Final SMTP Config [PROD]:`);
+    console.log(`   Host: ${smtpHost}`);
+    console.log(`   Port: ${smtpPort}`);
+    console.log(`   Secure: ${smtpSecure}`);
+    console.log(`   Username: ${smtpUsername}`);
+    console.log(`   Password Length: ${passwordLength}`);
+    console.log(`   Password Preview: ${passwordPreview}`);
     
     // Check for common issues
     if (smtpPassword) {
@@ -39,11 +53,23 @@ if (smtpHost && smtpUsername) {
             console.warn('⚠️  WARNING: Password has leading/trailing spaces - trimming...');
         }
         // Show first and last characters to help verify
-        console.log(`📧 Password starts with: "${smtpPassword.substring(0, 3)}" and ends with: "${smtpPassword.substring(smtpPassword.length - 3)}"`);
+        if (smtpPassword.length >= 6) {
+            console.log(`   Password starts with: "${smtpPassword.substring(0, 3)}" and ends with: "${smtpPassword.substring(smtpPassword.length - 3)}"`);
+        }
+        
+        // Check if using default/hardcoded password
+        if (smtpPassword === 'Infopehilirasam123' || smtpPassword === 'Aahaanveer@4may22mamu') {
+            console.warn('⚠️  WARNING: Using default/hardcoded password!');
+            console.warn('   Make sure SMTP_PASSWORD is set correctly in your .env file on the server.');
+        }
+    } else {
+        console.error('❌ ERROR: SMTP_PASSWORD is empty or not set!');
     }
+    console.log('📧 ==========================================\n');
 } else {
-    console.warn('⚠️  SMTP_HOST or SMTP_USERNAME not found in environment variables.');
-    console.warn('   Please set SMTP_HOST, SMTP_USERNAME, and SMTP_PASSWORD in your .env file.');
+    console.error('❌ ERROR: SMTP_HOST or SMTP_USERNAME not found!');
+    console.error('   Please set SMTP_HOST, SMTP_USERNAME, and SMTP_PASSWORD in your .env file.');
+    console.log('📧 ==========================================\n');
 }
 
 if (!smtpUsername || !smtpPassword) {
