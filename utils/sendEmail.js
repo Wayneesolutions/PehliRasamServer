@@ -46,7 +46,10 @@ if (!smtpUsername || !smtpPassword) {
 
 
 
-const transporter = nodemailer.createTransport({
+// Configure transporter based on port
+// Port 465: Uses SSL (secure: true, no STARTTLS)
+// Port 587: Uses STARTTLS (secure: false, requireTLS: true)
+const transporterConfig = {
     host: smtpHost,
     port: smtpPort,
     secure: smtpSecure, // true for 465 (SSL), false for 587 (STARTTLS)
@@ -54,17 +57,35 @@ const transporter = nodemailer.createTransport({
         user: smtpUsername,
         pass: smtpPassword.trim(), // Remove any trailing spaces
     } : undefined,
-    // Additional options for hosting provider mail servers
-    tls: {
-        rejectUnauthorized: false // Some hosting mail servers have self-signed certificates
-    },
-    // For hosting providers, sometimes need requireTLS
-    requireTLS: smtpPort === 587,
     // Connection timeout
-    connectionTimeout: 10000,
+    connectionTimeout: 15000,
     greetingTimeout: 10000,
-    socketTimeout: 10000
-});
+    socketTimeout: 15000
+};
+
+// Port-specific configuration
+if (smtpPort === 587) {
+    // Port 587 uses STARTTLS (not SSL) - must set secure: false
+    transporterConfig.secure = false;
+    transporterConfig.requireTLS = true;
+    transporterConfig.tls = {
+        rejectUnauthorized: false // Some hosting mail servers have self-signed certificates
+    };
+} else if (smtpPort === 465) {
+    // Port 465 uses SSL/TLS - must set secure: true
+    transporterConfig.secure = true;
+    transporterConfig.requireTLS = false;
+    transporterConfig.tls = {
+        rejectUnauthorized: false
+    };
+} else {
+    // Other ports - use default TLS settings
+    transporterConfig.tls = {
+        rejectUnauthorized: false
+    };
+}
+
+const transporter = nodemailer.createTransport(transporterConfig);
 
 // Verify SMTP connection (non-blocking)
 transporter.verify(function (error, success) {
