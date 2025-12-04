@@ -94,12 +94,6 @@ const customerSchema = new mongoose.Schema({
             type: String,
             trim: true,
             default: '',
-            validate: {
-                validator: function (value) {
-                    return value === '' || allowedCities.includes(value);
-                },
-                message: props => `${props.value} is not an allowed city`
-            }
         },
         state: { type: String, trim: true, default: null },  // State, province, or region
         country: { 
