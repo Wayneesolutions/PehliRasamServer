@@ -3777,6 +3777,17 @@ exports.getIntroFieldValues = async (req, res) => {
       });
     }
 
+    // Preload group metadata so we can keep a stable ordering and show labels
+    const formGroups = await FormGroup.find({ isDeleted: false, isActive: true }).sort({ createdAt: 1 });
+    const formGroupMap = new Map(
+      formGroups.map((group, index) => [group._id.toString(), { name: group.name, order: index }])
+    );
+
+    const preferencesGroups = await PreferencesGroup.find({ isDeleted: false, isActive: true }).sort({ createdAt: 1 });
+    const preferencesGroupMap = new Map(
+      preferencesGroups.map((group, index) => [group._id.toString(), { name: group.name, order: index }])
+    );
+
     const result = [];
 
     // 3. Add customer fields as "Profile" entries
@@ -3792,12 +3803,14 @@ exports.getIntroFieldValues = async (req, res) => {
       result.push({
         fieldName: key,
         value: value,
-        fieldsFor: "Profile"
+        fieldsFor: "Profile",
+        groupName: "Basic Details",
+        groupOrder: -1,
       });
     }
 
-    // 4. Get linked intro fields
-    const introFields = await IntroFields.find({ introId: intro._id });
+    // 4. Get linked intro fields (keep creation order for consistency)
+    const introFields = await IntroFields.find({ introId: intro._id }).sort({ createdAt: 1 });
 
 
     console.log("::::::::::::::::::::", introFields)
@@ -3819,6 +3832,15 @@ exports.getIntroFieldValues = async (req, res) => {
         });
         fieldValue = valueDoc ? valueDoc.value : null;
 
+        const groupId =
+          valueDoc && valueDoc.groupId
+            ? valueDoc.groupId.toString()
+            : formField.form_group_id
+            ? formField.form_group_id.toString()
+            : null;
+
+        const groupMeta = groupId ? formGroupMap.get(groupId) : null;
+
         result.push({
           fieldName,
           value: fieldValue,
@@ -3826,7 +3848,9 @@ exports.getIntroFieldValues = async (req, res) => {
           AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
           isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
           fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
-          groupId: valueDoc ? (valueDoc.groupId ? valueDoc.groupId.toString() : null) : (formField.form_group_id ? formField.form_group_id.toString() : null),  // Group ID for updating
+          groupId,  // Group ID for updating
+          groupName: groupMeta?.name || null,
+          groupOrder: typeof groupMeta?.order === "number" ? groupMeta.order : 999,
           attributeType: formField.attributeType || 'text',  // Field type for rendering, default to text
           attributeOption: formField.attributeOption || [],  // Options for select/radio
         });
@@ -3842,6 +3866,15 @@ exports.getIntroFieldValues = async (req, res) => {
         });
         fieldValue = valueDoc ? valueDoc.value : null;
 
+        const preferencesGroupId =
+          valueDoc && valueDoc.preferencesGroupId
+            ? valueDoc.preferencesGroupId.toString()
+            : prefField.preferencesGroupId
+            ? prefField.preferencesGroupId.toString()
+            : null;
+
+        const prefGroupMeta = preferencesGroupId ? preferencesGroupMap.get(preferencesGroupId) : null;
+
         result.push({
           fieldName,
           value: fieldValue,
@@ -3849,7 +3882,9 @@ exports.getIntroFieldValues = async (req, res) => {
           AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
           isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
           fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
-          preferencesGroupId: valueDoc ? (valueDoc.preferencesGroupId ? valueDoc.preferencesGroupId.toString() : null) : (prefField.preferencesGroupId ? prefField.preferencesGroupId.toString() : null),  // Group ID for updating
+          preferencesGroupId,  // Group ID for updating
+          preferencesGroupName: prefGroupMeta?.name || null,
+          groupOrder: typeof prefGroupMeta?.order === "number" ? prefGroupMeta.order : 999,
           profileField: prefField.profileField || 'text',  // Field type for rendering, default to text
           choices: prefField.choices || [],  // Options for select/radio
         });
