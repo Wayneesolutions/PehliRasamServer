@@ -3683,6 +3683,9 @@ exports.createIntro = async (req, res) => {
     // const introCount = await Intro.countDocuments();
     const nextIntroId = (lastId + 1).toString().padStart(5, "0");
 
+    // Set default expiration to 6 days from now if not provided
+    const defaultExpiration = expiration || new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
+    
     const introData = {
       introId: nextIntroId,
       customerId: customerId,
@@ -3691,7 +3694,7 @@ exports.createIntro = async (req, res) => {
       viewed: 0,
       total: 0,
       link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
-      expiration: expiration || new Date(),
+      expiration: defaultExpiration,
       profileImage: profileImage || "default_image_path",
     };
     
@@ -3777,20 +3780,10 @@ exports.getIntroFieldValues = async (req, res) => {
       });
     }
 
-    // Preload group metadata so we can keep a stable ordering and show labels
-    const formGroups = await FormGroup.find({ isDeleted: false, isActive: true }).sort({ createdAt: 1 });
-    const formGroupMap = new Map(
-      formGroups.map((group, index) => [group._id.toString(), { name: group.name, order: index }])
-    );
-
-    const preferencesGroups = await PreferencesGroup.find({ isDeleted: false, isActive: true }).sort({ createdAt: 1 });
-    const preferencesGroupMap = new Map(
-      preferencesGroups.map((group, index) => [group._id.toString(), { name: group.name, order: index }])
-    );
-
     const result = [];
+    const groupMap = new Map(); // Store group info
 
-    // 3. Add customer fields as "Profile" entries
+    // 3. Add customer fields as "Profile" entries (Basic Info - shown first)
     const customerFields = {
       firstName: customer.firstName,
       middelName: customer.middelName,
@@ -3801,16 +3794,17 @@ exports.getIntroFieldValues = async (req, res) => {
 
     for (const [key, value] of Object.entries(customerFields)) {
       result.push({
-        fieldName: key,
+        fieldName: key === 'middelName' ? 'Middle Name' : key.charAt(0).toUpperCase() + key.slice(1),
         value: value,
         fieldsFor: "Profile",
-        groupName: "Basic Details",
-        groupOrder: -1,
+        groupId: "basicInfo", // Special group for basic info
+        groupName: "Basic Information",
+        groupOrder: 0 // Show first
       });
     }
 
-    // 4. Get linked intro fields (keep creation order for consistency)
-    const introFields = await IntroFields.find({ introId: intro._id }).sort({ createdAt: 1 });
+    // 4. Get linked intro fields
+    const introFields = await IntroFields.find({ introId: intro._id });
 
 
     console.log("::::::::::::::::::::", introFields)
@@ -3832,14 +3826,12 @@ exports.getIntroFieldValues = async (req, res) => {
         });
         fieldValue = valueDoc ? valueDoc.value : null;
 
-        const groupId =
-          valueDoc && valueDoc.groupId
-            ? valueDoc.groupId.toString()
-            : formField.form_group_id
-            ? formField.form_group_id.toString()
-            : null;
-
-        const groupMeta = groupId ? formGroupMap.get(groupId) : null;
+        const groupIdValue = valueDoc ? (valueDoc.groupId ? valueDoc.groupId.toString() : null) : (formField.form_group_id ? formField.form_group_id.toString() : null);
+        let groupName = null;
+        if (groupIdValue) {
+          const formGroup = await FormGroup.findById(groupIdValue);
+          groupName = formGroup ? formGroup.name : null;
+        }
 
         result.push({
           fieldName,
@@ -3848,9 +3840,8 @@ exports.getIntroFieldValues = async (req, res) => {
           AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
           isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
           fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
-          groupId,  // Group ID for updating
-          groupName: groupMeta?.name || null,
-          groupOrder: typeof groupMeta?.order === "number" ? groupMeta.order : 999,
+          groupId: groupIdValue,  // Group ID for updating
+          groupName: groupName,  // Group name for display ordering
           attributeType: formField.attributeType || 'text',  // Field type for rendering, default to text
           attributeOption: formField.attributeOption || [],  // Options for select/radio
         });
@@ -3866,15 +3857,6 @@ exports.getIntroFieldValues = async (req, res) => {
         });
         fieldValue = valueDoc ? valueDoc.value : null;
 
-        const preferencesGroupId =
-          valueDoc && valueDoc.preferencesGroupId
-            ? valueDoc.preferencesGroupId.toString()
-            : prefField.preferencesGroupId
-            ? prefField.preferencesGroupId.toString()
-            : null;
-
-        const prefGroupMeta = preferencesGroupId ? preferencesGroupMap.get(preferencesGroupId) : null;
-
         result.push({
           fieldName,
           value: fieldValue,
@@ -3882,9 +3864,7 @@ exports.getIntroFieldValues = async (req, res) => {
           AllowEdit: field.AllowEdit !== undefined ? field.AllowEdit : true,  // Default to true
           isRequired: field.isRequired !== undefined ? field.isRequired : false,  // Default to false
           fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
-          preferencesGroupId,  // Group ID for updating
-          preferencesGroupName: prefGroupMeta?.name || null,
-          groupOrder: typeof prefGroupMeta?.order === "number" ? prefGroupMeta.order : 999,
+          preferencesGroupId: valueDoc ? (valueDoc.preferencesGroupId ? valueDoc.preferencesGroupId.toString() : null) : (prefField.preferencesGroupId ? prefField.preferencesGroupId.toString() : null),  // Group ID for updating
           profileField: prefField.profileField || 'text',  // Field type for rendering, default to text
           choices: prefField.choices || [],  // Options for select/radio
         });
@@ -3912,6 +3892,7 @@ exports.getIntroSummaries = async (req, res) => {
     const intros = await Intro.find({ isDeleted: false })
       .populate("customerId", "firstName middelName lastName") // get only name fields
       .select("introId customerId createdAt sentCount viewed total")
+      .sort({ createdAt: -1 }) // Sort by newest first
       .lean();
 
     if (!intros.length) {
