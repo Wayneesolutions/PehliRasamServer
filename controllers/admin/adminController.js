@@ -2140,6 +2140,96 @@ exports.deleteCustomerPhoto = async (req, res) => {
   }
 };
 
+// Proxy function to download images from Azure Blob Storage (bypasses CORS)
+exports.proxyImage = async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'imageUrl is required',
+      });
+    }
+
+    // Validate that the URL is from Azure Blob Storage or allowed domains
+    const allowedDomains = [
+      'pehlirasamstorage.blob.core.windows.net',
+      's3.amazonaws.com',
+      'localhost:8098'
+    ];
+    
+    const urlObj = new URL(imageUrl);
+    const isAllowed = allowedDomains.some(domain => urlObj.hostname.includes(domain));
+    
+    if (!isAllowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Image URL not allowed',
+      });
+    }
+
+    // Use https or http based on URL protocol
+    const https = require('https');
+    const http = require('http');
+    const protocol = urlObj.protocol === 'https:' ? https : http;
+
+    // Fetch the image and buffer it
+    protocol.get(imageUrl, (imageRes) => {
+      if (imageRes.statusCode !== 200) {
+        return res.status(imageRes.statusCode).json({
+          success: false,
+          message: `Failed to fetch image: ${imageRes.statusCode}`,
+        });
+      }
+
+      // Collect chunks
+      const chunks = [];
+      imageRes.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+
+      imageRes.on('end', () => {
+        // Combine all chunks into a buffer
+        const buffer = Buffer.concat(chunks);
+        
+        // Set appropriate headers
+        const contentType = imageRes.headers['content-type'] || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+
+        // Send the buffer as response
+        res.send(buffer);
+      });
+
+      imageRes.on('error', (error) => {
+        console.error('Error reading image stream:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Failed to read image data',
+          error: error.message,
+        });
+      });
+    }).on('error', (error) => {
+      console.error('Error fetching image:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch image',
+        error: error.message,
+      });
+    });
+
+  } catch (error) {
+    console.error('Error in proxyImage:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message,
+    });
+  }
+};
+
 
 
 /////

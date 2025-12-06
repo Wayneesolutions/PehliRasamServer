@@ -91,6 +91,7 @@ const {
   // getMatchGroupValues,
   addCustomerPhoto,
   deleteCustomerPhoto,
+  proxyImage,
 
   createEmailTemplate,
   getAllEmailTemplates,
@@ -199,6 +200,7 @@ router.post("/getMatchGroupDetails", checkAdminToken, getMatchGroupDetails)
 router.post("/searchCustomerByName", checkAdminToken, searchCustomerByName)
 router.post("/addCustomerPhoto", checkAdminToken, addCustomerPhoto)
 router.post("/deleteCustomerPhoto", checkAdminToken, deleteCustomerPhoto)
+router.post("/proxyImage", checkAdminToken, proxyImage)
 
 
 router.post("/addCustomerToClientList", checkAdminToken, addCustomerToClientList)
