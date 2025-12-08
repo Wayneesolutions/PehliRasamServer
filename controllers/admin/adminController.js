@@ -1448,7 +1448,7 @@ exports.getCustomerProfileDetail = async (req, res) => {
 
     const customerObjectId = new mongoose.Types.ObjectId(customerId);
 
-    const groups = await FormGroup.find({ isDeleted: false, isActive: true });
+    const groups = await FormGroup.find({ isDeleted: false, isActive: true }).sort({ name: 1 });
 
     const fields = await FormField.find({ isDeleted: false, isActive: true });
 
@@ -3870,10 +3870,25 @@ exports.getIntroFieldValues = async (req, res) => {
       });
     }
 
+    // 3. Get all FormGroups sorted by name (to match Form page ordering)
+    const allFormGroups = await FormGroup.find({ isDeleted: false, isActive: true }).sort({ name: 1 });
+    
+    // Create a map of groupName to order (matching Form page order)
+    // Basic Information gets order 0, then other groups get order based on their position
+    const groupOrderMap = new Map();
+    groupOrderMap.set("Basic Information", 0); // Basic info always first
+    
+    // Assign order to other groups based on their sorted position (starting from 1)
+    allFormGroups.forEach((group, index) => {
+      if (group.name !== "Basic Information") {
+        groupOrderMap.set(group.name, index + 1);
+      }
+    });
+
     const result = [];
     const groupMap = new Map(); // Store group info
 
-    // 3. Add customer fields as "Profile" entries (Basic Info - shown first)
+    // 4. Add customer fields as "Profile" entries (Basic Info - shown first)
     const customerFields = {
       firstName: customer.firstName,
       middelName: customer.middelName,
@@ -3893,7 +3908,7 @@ exports.getIntroFieldValues = async (req, res) => {
       });
     }
 
-    // 4. Get linked intro fields
+    // 5. Get linked intro fields
     const introFields = await IntroFields.find({ introId: intro._id });
 
 
@@ -3923,6 +3938,9 @@ exports.getIntroFieldValues = async (req, res) => {
           groupName = formGroup ? formGroup.name : null;
         }
 
+        // Get groupOrder from the map, default to 999 if not found
+        const groupOrder = groupName ? (groupOrderMap.get(groupName) ?? 999) : 999;
+
         result.push({
           fieldName,
           value: fieldValue,
@@ -3932,6 +3950,7 @@ exports.getIntroFieldValues = async (req, res) => {
           fieldId: field.fieldId ? field.fieldId.toString() : null,  // Include fieldId for reference
           groupId: groupIdValue,  // Group ID for updating
           groupName: groupName,  // Group name for display ordering
+          groupOrder: groupOrder,  // Group order matching Form page
           attributeType: formField.attributeType || 'text',  // Field type for rendering, default to text
           attributeOption: formField.attributeOption || [],  // Options for select/radio
         });
