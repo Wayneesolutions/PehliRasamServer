@@ -3475,11 +3475,30 @@ exports.createPresetField = async (req, res) => {
       }
     }
 
-    // Add createdBy to each entry
-    const dataToInsert = presetFieldsArray.map(item => ({
-      ...item,
-      createdBy: req.id, // Assuming req.id is populated after authentication
-    }));
+    // Add createdBy to each entry and mark basic info fields
+    const dataToInsert = presetFieldsArray.map(item => {
+      const isBasicInfo = typeof item.fieldsId === 'string' && item.fieldsId.startsWith('basic-');
+      
+      const insertItem = {
+        fieldsFor: item.fieldsFor,
+        AllowEdit: item.AllowEdit ?? true,
+        isRequired: item.isRequired ?? false,
+        presetId: item.presetId,
+        isBasicInfo: isBasicInfo,
+        createdBy: req.id,
+      };
+      
+      // For basic info fields, store in basicInfoFieldKey, otherwise store in fieldsId
+      if (isBasicInfo) {
+        insertItem.basicInfoFieldKey = item.fieldsId; // Store string like "basic-firstName"
+        insertItem.fieldsId = null; // Don't set fieldsId for basic info fields
+      } else {
+        insertItem.fieldsId = item.fieldsId; // Store ObjectId for regular FormFields
+        insertItem.basicInfoFieldKey = null;
+      }
+      
+      return insertItem;
+    });
 
     // Insert multiple documents into database
     const savedPresetFields = await PresetFields.insertMany(dataToInsert);
@@ -3547,26 +3566,60 @@ exports.getAllPresetsWithFields = async (req, res) => {
           isDeleted: false
         }).lean();
 
+        // Helper function to get basic info field label
+        const getBasicInfoFieldLabel = (fieldKey) => {
+          const basicInfoMap = {
+            'basic-firstName': 'First Name',
+            'basic-middleName': 'Middle Name',
+            'basic-lastName': 'Last Name',
+            'basic-email': 'Email',
+            'basic-phone': 'Phone Number',
+            'basic-address-street': 'Address (Street)',
+            'basic-address-city': 'City',
+            'basic-address-state': 'State',
+            'basic-address-postalCode': 'Postal Code',
+            'basic-address-country': 'Country'
+          };
+          return basicInfoMap[fieldKey] || fieldKey;
+        };
+
         const formattedFields = await Promise.all(
           presetFields.map(async (field) => {
+            // Handle basic info fields - check basicInfoFieldKey instead
+            if (field.isBasicInfo && field.basicInfoFieldKey) {
+              return {
+                presetFieldId: field._id,
+                id: field.basicInfoFieldKey, // Use basicInfoFieldKey for basic info fields
+                Label: getBasicInfoFieldLabel(field.basicInfoFieldKey),
+                Kind: "profile",
+                Field: "text", // Basic info fields are typically text
+                Required: field.isRequired,
+                AllowEdit: field.AllowEdit,
+                isBasicInfo: true
+              };
+            }
+
             let fieldData = null;
 
             if (field.fieldsFor === 'profile') {
-              fieldData = await FormField.findOne({
-                _id: field.fieldsId,
-                isDeleted: false
-              }).lean();
+              // Only query FormField if fieldsId exists and is not null (basic info fields have null fieldsId)
+              if (field.fieldsId && mongoose.Types.ObjectId.isValid(field.fieldsId)) {
+                fieldData = await FormField.findOne({
+                  _id: field.fieldsId,
+                  isDeleted: false
+                }).lean();
 
-              if (fieldData) {
-                return {
-                  presetFieldId: field._id, // Add PresetFields document ID
-                  id: field.fieldsId,
-                  Label: fieldData.attributeName,
-                  Kind: "profile",
-                  Field: fieldData.attributeType,
-                  Required: field.isRequired,
-                  AllowEdit: field.AllowEdit
-                };
+                if (fieldData) {
+                  return {
+                    presetFieldId: field._id, // Add PresetFields document ID
+                    id: field.fieldsId,
+                    Label: fieldData.attributeName,
+                    Kind: "profile",
+                    Field: fieldData.attributeType,
+                    Required: field.isRequired,
+                    AllowEdit: field.AllowEdit
+                  };
+                }
               }
             } else if (field.fieldsFor === 'Preferences') {
               fieldData = await PreferencesFields.findOne({
@@ -3635,26 +3688,59 @@ exports.getPresetById = async (req, res) => {
       isDeleted: false
     }).lean();
 
+    // Helper function to get basic info field label
+    const getBasicInfoFieldLabel = (fieldKey) => {
+      const basicInfoMap = {
+        'basic-firstName': 'First Name',
+        'basic-middleName': 'Middle Name',
+        'basic-lastName': 'Last Name',
+        'basic-email': 'Email',
+        'basic-phone': 'Phone Number',
+        'basic-address-street': 'Address (Street)',
+        'basic-address-city': 'City',
+        'basic-address-state': 'State',
+        'basic-address-postalCode': 'Postal Code',
+        'basic-address-country': 'Country'
+      };
+      return basicInfoMap[fieldKey] || fieldKey;
+    };
+
     // Step 3: Process each field to get metadata
     const formattedFields = await Promise.all(
       presetFields.map(async (field) => {
+        // Handle basic info fields - check basicInfoFieldKey instead
+        if (field.isBasicInfo && field.basicInfoFieldKey) {
+          return {
+            id: field.basicInfoFieldKey, // Use basicInfoFieldKey for basic info fields
+            Label: getBasicInfoFieldLabel(field.basicInfoFieldKey),
+            Kind: "profile",
+            Field: "text", // Basic info fields are typically text
+            Required: field.isRequired,
+            AllowEdit: field.AllowEdit,
+            isBasicInfo: true
+          };
+        }
+
         let fieldData = null;
 
         if (field.fieldsFor === 'profile') {
-          fieldData = await FormField.findOne({
-            _id: field.fieldsId,
-            isDeleted: false
-          }).lean();
+          // Only query FormField if fieldsId exists and is not null (basic info fields have null fieldsId)
+          if (field.fieldsId && mongoose.Types.ObjectId.isValid(field.fieldsId)) {
+            fieldData = await FormField.findOne({
+              _id: field.fieldsId,
+              isDeleted: false
+            }).lean();
 
-          if (fieldData) {
-            return {
-              id: field.fieldsId,
-              Label: fieldData.attributeName,
-              Kind: "profile",
-              Field: fieldData.attributeType,
-              Required: field.isRequired,
-              AllowEdit: field.AllowEdit
-            };
+            if (fieldData) {
+              return {
+                id: field.fieldsId,
+                Label: fieldData.attributeName,
+                Kind: "profile",
+                Field: fieldData.attributeType,
+                Required: field.isRequired,
+                AllowEdit: field.AllowEdit
+              };
+            }
           }
 
         } else if (field.fieldsFor === 'Preferences') {
@@ -3750,7 +3836,7 @@ exports.updatePresetField = async (req, res) => {
 
 exports.createIntro = async (req, res) => {
   try {
-    const { expiration, profileImage, fields, customerId } = req.body;
+    const { expiration, profileImage, fields, customerId, presetId } = req.body;
 
     if (!customerId) {
       return res.status(400).json({
@@ -3776,6 +3862,14 @@ exports.createIntro = async (req, res) => {
     // Set default expiration to 6 days from now if not provided
     const defaultExpiration = expiration || new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
     
+    // Convert presetId to ObjectId if provided
+    let presetIdObj = null;
+    if (presetId) {
+      presetIdObj = mongoose.Types.ObjectId.isValid(presetId) 
+        ? (typeof presetId === 'string' ? new mongoose.Types.ObjectId(presetId) : presetId)
+        : null;
+    }
+    
     const introData = {
       introId: nextIntroId,
       customerId: customerId,
@@ -3786,10 +3880,18 @@ exports.createIntro = async (req, res) => {
       link: `http://pehlirasam.wayneesolutions.com/client/${nextIntroId}`,
       expiration: defaultExpiration,
       profileImage: profileImage || "default_image_path",
+      presetId: presetIdObj, // Store the preset ID used to create this intro
     };
     
     const newIntro = new Intro(introData);
     await newIntro.save();
+    
+    // Log to verify presetId was saved
+    console.log('=== CREATE INTRO ===');
+    console.log('Intro ID:', newIntro.introId);
+    console.log('PresetId from request:', presetId);
+    console.log('PresetId saved:', newIntro.presetId);
+    console.log('PresetId type:', typeof newIntro.presetId);
  
     const customer = await Customer.findOne({_id:customerId})
     const cname = customer.firstName+' '+customer.middelName+' '+customer.lastName
@@ -3804,7 +3906,18 @@ exports.createIntro = async (req, res) => {
      const newActiviy = new ActivityLog(activityData)
      await newActiviy.save()
      
-    const introFieldsPromises = fields.map(async (field) => {
+    // Filter out basic info fields - they are automatically included by getIntroFieldValues
+    // Basic info fields have fieldId starting with "basic-" (strings, not ObjectIds)
+    const validFields = fields.filter(field => {
+      // Skip basic info fields (they're automatically included, don't need to be stored)
+      if (typeof field.fieldId === 'string' && field.fieldId.startsWith('basic-')) {
+        return false;
+      }
+      // Only include fields with valid ObjectId fieldId
+      return mongoose.Types.ObjectId.isValid(field.fieldId);
+    });
+
+    const introFieldsPromises = validFields.map(async (field) => {
       const newField = new IntroFields({
         fieldId: field.fieldId,
         fieldsFor: field.fieldsFor,
@@ -3852,7 +3965,7 @@ exports.getIntroFieldValues = async (req, res) => {
       });
     }
 
-    // 1. Find intro by introId
+    // 1. Find intro by introId - make sure to get presetId
     const intro = await Intro.findOne({ introId });
     if (!intro) {
       return res.status(404).json({
@@ -3860,9 +3973,13 @@ exports.getIntroFieldValues = async (req, res) => {
         message: "Intro not found"
       });
     }
+    
+    console.log('Intro ID:', intro.introId);
+    console.log('Intro presetId:', intro.presetId);
+    console.log('PresetId type:', typeof intro.presetId);
 
-    // 2. Fetch customer
-    const customer = await Customer.findById(intro.customerId).select("firstName middelName lastName Number address.city");
+    // 2. Fetch customer - include all basic info fields
+    const customer = await Customer.findById(intro.customerId).select("firstName middelName lastName Number email address");
     if (!customer) {
       return res.status(404).json({
         success: false,
@@ -3888,27 +4005,131 @@ exports.getIntroFieldValues = async (req, res) => {
     const result = [];
     const groupMap = new Map(); // Store group info
 
-    // 4. Add customer fields as "Profile" entries (Basic Info - shown first)
+    // 4. Get preset fields if intro was created from a preset
+    let presetBasicInfoFields = new Set(); // Track which basic info fields are in the preset
+    let hasPreset = false;
+    
+    // Check if intro has a valid presetId
+    // Only show basic info fields if they're explicitly in the preset
+    if (intro.presetId && 
+        intro.presetId !== null && 
+        intro.presetId !== undefined && 
+        intro.presetId.toString() !== 'null' && 
+        intro.presetId.toString() !== 'undefined') {
+      hasPreset = true;
+      // Convert presetId to ObjectId if it's a string
+      const presetIdObj = typeof intro.presetId === 'string' 
+        ? new mongoose.Types.ObjectId(intro.presetId) 
+        : intro.presetId;
+      
+      const presetFields = await PresetFields.find({
+        presetId: presetIdObj,
+        isDeleted: false,
+        isBasicInfo: true
+      }).lean();
+      
+      // Collect basic info field keys from preset
+      presetFields.forEach(field => {
+        if (field.basicInfoFieldKey) {
+          presetBasicInfoFields.add(field.basicInfoFieldKey);
+        }
+      });
+      
+      console.log('=== GET INTRO FIELD VALUES ===');
+      console.log('Intro ID:', intro.introId);
+      console.log('Preset ID:', intro.presetId);
+      console.log('PresetFields found:', presetFields.length);
+      console.log('Basic info fields in preset:', Array.from(presetBasicInfoFields));
+    } else {
+      console.log('=== GET INTRO FIELD VALUES ===');
+      console.log('No presetId found for intro:', intro.introId);
+      console.log('presetId value:', intro.presetId);
+      console.log('presetId type:', typeof intro.presetId);
+      // If no preset, don't show any basic info fields
+      hasPreset = false;
+    }
+
+    // 5. Add customer fields as "Profile" entries (Basic Info - only if in preset)
+    // Map customer fields to basic info field keys
+    const customerFieldMapping = {
+      firstName: 'basic-firstName',
+      middelName: 'basic-middleName',
+      lastName: 'basic-lastName',
+      email: 'basic-email',
+      Number: 'basic-phone',
+      city: 'basic-address-city'
+    };
+
     const customerFields = {
       firstName: customer.firstName,
       middelName: customer.middelName,
       lastName: customer.lastName,
+      email: customer.email,
       Number: customer.Number,
       city: customer?.address?.city || null
     };
 
+    // Only include basic info fields that are in the preset
+    // If no preset, don't include any basic info fields (they should be in preset to be shown)
     for (const [key, value] of Object.entries(customerFields)) {
-      result.push({
-        fieldName: key === 'middelName' ? 'Middle Name' : key.charAt(0).toUpperCase() + key.slice(1),
-        value: value,
-        fieldsFor: "Profile",
-        groupId: "basicInfo", // Special group for basic info
-        groupName: "Basic Information",
-        groupOrder: 0 // Show first
-      });
+      const basicInfoKey = customerFieldMapping[key];
+      
+      // Only include if intro has a preset AND the field is in the preset
+      // If no preset, don't show basic info fields (they must be explicitly selected in preset)
+      if (hasPreset && basicInfoKey && presetBasicInfoFields.has(basicInfoKey)) {
+        // Format field name properly
+        let fieldName = key;
+        if (key === 'middelName') {
+          fieldName = 'Middle Name';
+        } else if (key === 'Number') {
+          fieldName = 'Phone Number';
+        } else {
+          fieldName = key.charAt(0).toUpperCase() + key.slice(1);
+        }
+        
+        result.push({
+          fieldName: fieldName,
+          value: value,
+          fieldsFor: "Profile",
+          groupId: "basicInfo", // Special group for basic info
+          groupName: "Basic Information",
+          groupOrder: 0 // Show first
+        });
+      }
     }
 
-    // 5. Get linked intro fields
+    // Also include other address fields if they're in the preset
+    // Only show if presetId exists and field is in preset
+    if (hasPreset && presetBasicInfoFields.size > 0) {
+      const addressFields = {
+        'basic-address-street': customer?.address?.street || null,
+        'basic-address-state': customer?.address?.state || null,
+        'basic-address-postalCode': customer?.address?.postalCode || null,
+        'basic-address-country': customer?.address?.country || null,
+      };
+
+      const addressFieldLabels = {
+        'basic-address-street': 'Address (Street)',
+        'basic-address-state': 'State',
+        'basic-address-postalCode': 'Postal Code',
+        'basic-address-country': 'Country'
+      };
+
+      for (const [key, value] of Object.entries(addressFields)) {
+        if (presetBasicInfoFields.has(key) && value) {
+          result.push({
+            fieldName: addressFieldLabels[key],
+            value: value,
+            fieldsFor: "Profile",
+            groupId: "basicInfo",
+            groupName: "Basic Information",
+            groupOrder: 0
+          });
+        }
+      }
+    }
+
+    // 6. Get linked intro fields
     const introFields = await IntroFields.find({ introId: intro._id });
 
 

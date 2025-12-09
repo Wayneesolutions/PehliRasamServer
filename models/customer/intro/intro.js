@@ -46,6 +46,11 @@ const introSchema = new mongoose.Schema({
   link: {
     type: String,
     required: true
+  },
+  presetId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Preset",
+    default: null
   }
 });
 
