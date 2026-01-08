@@ -2833,9 +2833,12 @@ exports.deleteMatchGroupValue = async (req, res) => {
   }
 };
 
+const escapeRegex = (text) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 exports.searchCustomerByName = async (req, res) => {
   try {
-    const { name } = req.body;
+    let { name } = req.body;
 
     if (!name || name.trim().length < 2) {
       return res.status(400).json({
@@ -2844,20 +2847,29 @@ exports.searchCustomerByName = async (req, res) => {
       });
     }
 
-    const searchWords = name.trim().split(/\s+/);
+    const searchWords = name
+      .trim()
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 0)
+      .map(w => escapeRegex(w))          // 🔒 escape
+      .filter(w => w.replace(/\*/g, '').length > 0); // 🚫 ignore ****
 
-    const nameConditions = searchWords.map(word => {
-      const safeWord = escapeRegex(word);
-      const regex = new RegExp(safeWord, 'i');
+    if (!searchWords.length) {
+      return res.status(200).json({
+        success: true,
+        message: "No valid search terms",
+        data: []
+      });
+    }
 
-      return {
-        $or: [
-          { firstName: regex },
-          { middelName: regex },
-          { lastName: regex }
-        ]
-      };
-    });
+    const nameConditions = searchWords.map(word => ({
+      $or: [
+        { firstName: { $regex: word, $options: 'i' } },
+        { middelName: { $regex: word, $options: 'i' } },
+        { lastName: { $regex: word, $options: 'i' } }
+      ]
+    }));
 
     const customers = await Customer.find({
       isDeleted: false,
@@ -2874,11 +2886,11 @@ exports.searchCustomerByName = async (req, res) => {
     console.error("Error in searchCustomerByName:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: error.message
+      message: "Internal server error"
     });
   }
 };
+
 
 
 exports.addCustomerToClientList = async (req, res) => {
