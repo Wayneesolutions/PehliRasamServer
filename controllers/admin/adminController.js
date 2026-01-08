@@ -2158,10 +2158,10 @@ exports.proxyImage = async (req, res) => {
       's3.amazonaws.com',
       'localhost:8098'
     ];
-    
+
     const urlObj = new URL(imageUrl);
     const isAllowed = allowedDomains.some(domain => urlObj.hostname.includes(domain));
-    
+
     if (!isAllowed) {
       return res.status(403).json({
         success: false,
@@ -2192,7 +2192,7 @@ exports.proxyImage = async (req, res) => {
       imageRes.on('end', () => {
         // Combine all chunks into a buffer
         const buffer = Buffer.concat(chunks);
-        
+
         // Set appropriate headers
         const contentType = imageRes.headers['content-type'] || 'image/jpeg';
         res.setHeader('Content-Type', contentType);
@@ -2248,10 +2248,10 @@ exports.downloadExternalPhoto = async (req, res) => {
       's3.amazonaws.com',
       'localhost:8098'
     ];
-    
+
     const urlObj = new URL(url);
     const isAllowed = allowedDomains.some(domain => urlObj.hostname.includes(domain));
-    
+
     if (!isAllowed) {
       return res.status(403).json({
         success: false,
@@ -2282,7 +2282,7 @@ exports.downloadExternalPhoto = async (req, res) => {
       imageRes.on('end', () => {
         // Combine all chunks into a buffer
         const buffer = Buffer.concat(chunks);
-        
+
         // Set appropriate headers
         const contentType = imageRes.headers['content-type'] || 'image/jpeg';
         res.setHeader('Content-Type', contentType);
@@ -3347,32 +3347,27 @@ exports.getMailLogs = async (req, res) => {
     let logs = [];
 
     if (search && search.trim().length > 0) {
-      const regex = new RegExp(search.trim(), 'i');
+      const safeSearch = escapeRegex(search.trim());
 
-      // Find matching customers
       const matchedCustomers = await Customer.find({
         $or: [
-          { firstName: regex },
-          { lastName: regex },
-          { email: regex }
+          { firstName: { $regex: safeSearch, $options: 'i' } },
+          { lastName: { $regex: safeSearch, $options: 'i' } },
+          { email: { $regex: safeSearch, $options: 'i' } }
         ]
       }).select('_id');
 
       const customerIds = matchedCustomers.map(c => c._id);
 
-      // Find logs where:
-      // - customer is in matched customers OR
-      // - subject matches the search
       logs = await MailLog.find({
         $or: [
           { customer: { $in: customerIds } },
-          { subject: regex }
+          { subject: { $regex: safeSearch, $options: 'i' } }
         ]
       })
         .populate('customer', 'email firstName lastName')
         .sort({ sentAt: -1 });
     } else {
-      // No search: get all logs
       logs = await MailLog.find()
         .populate('customer', 'email firstName lastName')
         .sort({ sentAt: -1 });
@@ -3389,11 +3384,13 @@ exports.getMailLogs = async (req, res) => {
     }));
 
     return res.status(200).json({ count: result.length, logs: result });
+
   } catch (error) {
     console.error('Get/Search Mail Logs Error:', error);
     return res.status(500).json({ message: 'Internal server error.' });
   }
 };
+
 
 exports.getTodayStatsCount = async (req, res) => {
   try {
@@ -3581,7 +3578,7 @@ exports.createPresetField = async (req, res) => {
     // Add createdBy to each entry and mark basic info fields
     const dataToInsert = presetFieldsArray.map(item => {
       const isBasicInfo = typeof item.fieldsId === 'string' && item.fieldsId.startsWith('basic-');
-      
+
       const insertItem = {
         fieldsFor: item.fieldsFor,
         AllowEdit: item.AllowEdit ?? true,
@@ -3590,7 +3587,7 @@ exports.createPresetField = async (req, res) => {
         isBasicInfo: isBasicInfo,
         createdBy: req.id,
       };
-      
+
       // For basic info fields, store in basicInfoFieldKey, otherwise store in fieldsId
       if (isBasicInfo) {
         insertItem.basicInfoFieldKey = item.fieldsId; // Store string like "basic-firstName"
@@ -3599,7 +3596,7 @@ exports.createPresetField = async (req, res) => {
         insertItem.fieldsId = item.fieldsId; // Store ObjectId for regular FormFields
         insertItem.basicInfoFieldKey = null;
       }
-      
+
       return insertItem;
     });
 
@@ -3964,15 +3961,15 @@ exports.createIntro = async (req, res) => {
 
     // Set default expiration to 6 days from now if not provided
     const defaultExpiration = expiration || new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
-    
+
     // Convert presetId to ObjectId if provided
     let presetIdObj = null;
     if (presetId) {
-      presetIdObj = mongoose.Types.ObjectId.isValid(presetId) 
+      presetIdObj = mongoose.Types.ObjectId.isValid(presetId)
         ? (typeof presetId === 'string' ? new mongoose.Types.ObjectId(presetId) : presetId)
         : null;
     }
-    
+
     const introData = {
       introId: nextIntroId,
       customerId: customerId,
@@ -3985,30 +3982,30 @@ exports.createIntro = async (req, res) => {
       profileImage: profileImage || "default_image_path",
       presetId: presetIdObj, // Store the preset ID used to create this intro
     };
-    
+
     const newIntro = new Intro(introData);
     await newIntro.save();
-    
+
     // Log to verify presetId was saved
     console.log('=== CREATE INTRO ===');
     console.log('Intro ID:', newIntro.introId);
     console.log('PresetId from request:', presetId);
     console.log('PresetId saved:', newIntro.presetId);
     console.log('PresetId type:', typeof newIntro.presetId);
- 
-    const customer = await Customer.findOne({_id:customerId})
-    const cname = customer.firstName+' '+customer.middelName+' '+customer.lastName
-    const admin = await Admin.findOne({_id:req.id})
-    const aname = admin.firstName+' '+admin.lastName
-     const activityData = {
-      customerId:customerId,
-      performedBy:req.id,
-      action:"Intro generated",
-      changeSummary:`${cname} created ${newIntro.link} by Admin ${aname}`
-     }
-     const newActiviy = new ActivityLog(activityData)
-     await newActiviy.save()
-     
+
+    const customer = await Customer.findOne({ _id: customerId })
+    const cname = customer.firstName + ' ' + customer.middelName + ' ' + customer.lastName
+    const admin = await Admin.findOne({ _id: req.id })
+    const aname = admin.firstName + ' ' + admin.lastName
+    const activityData = {
+      customerId: customerId,
+      performedBy: req.id,
+      action: "Intro generated",
+      changeSummary: `${cname} created ${newIntro.link} by Admin ${aname}`
+    }
+    const newActiviy = new ActivityLog(activityData)
+    await newActiviy.save()
+
     // Filter out basic info fields - they are automatically included by getIntroFieldValues
     // Basic info fields have fieldId starting with "basic-" (strings, not ObjectIds)
     const validFields = fields.filter(field => {
@@ -4036,7 +4033,7 @@ exports.createIntro = async (req, res) => {
     });
 
 
-    
+
     await Promise.all(introFieldsPromises);
 
     res.status(201).json({
@@ -4076,7 +4073,7 @@ exports.getIntroFieldValues = async (req, res) => {
         message: "Intro not found"
       });
     }
-    
+
     console.log('Intro ID:', intro.introId);
     console.log('Intro presetId:', intro.presetId);
     console.log('PresetId type:', typeof intro.presetId);
@@ -4092,12 +4089,12 @@ exports.getIntroFieldValues = async (req, res) => {
 
     // 3. Get all FormGroups sorted by name (to match Form page ordering)
     const allFormGroups = await FormGroup.find({ isDeleted: false, isActive: true }).sort({ name: 1 });
-    
+
     // Create a map of groupName to order (matching Form page order)
     // Basic Information gets order 0, then other groups get order based on their position
     const groupOrderMap = new Map();
     groupOrderMap.set("Basic Information", 0); // Basic info always first
-    
+
     // Assign order to other groups based on their sorted position (starting from 1)
     allFormGroups.forEach((group, index) => {
       if (group.name !== "Basic Information") {
@@ -4111,33 +4108,33 @@ exports.getIntroFieldValues = async (req, res) => {
     // 4. Get preset fields if intro was created from a preset
     let presetBasicInfoFields = new Set(); // Track which basic info fields are in the preset
     let hasPreset = false;
-    
+
     // Check if intro has a valid presetId
     // Only show basic info fields if they're explicitly in the preset
-    if (intro.presetId && 
-        intro.presetId !== null && 
-        intro.presetId !== undefined && 
-        intro.presetId.toString() !== 'null' && 
-        intro.presetId.toString() !== 'undefined') {
+    if (intro.presetId &&
+      intro.presetId !== null &&
+      intro.presetId !== undefined &&
+      intro.presetId.toString() !== 'null' &&
+      intro.presetId.toString() !== 'undefined') {
       hasPreset = true;
       // Convert presetId to ObjectId if it's a string
-      const presetIdObj = typeof intro.presetId === 'string' 
-        ? new mongoose.Types.ObjectId(intro.presetId) 
+      const presetIdObj = typeof intro.presetId === 'string'
+        ? new mongoose.Types.ObjectId(intro.presetId)
         : intro.presetId;
-      
+
       const presetFields = await PresetFields.find({
         presetId: presetIdObj,
         isDeleted: false,
         isBasicInfo: true
       }).lean();
-      
+
       // Collect basic info field keys from preset
       presetFields.forEach(field => {
         if (field.basicInfoFieldKey) {
           presetBasicInfoFields.add(field.basicInfoFieldKey);
         }
       });
-      
+
       console.log('=== GET INTRO FIELD VALUES ===');
       console.log('Intro ID:', intro.introId);
       console.log('Preset ID:', intro.presetId);
@@ -4176,7 +4173,7 @@ exports.getIntroFieldValues = async (req, res) => {
     // If no preset, don't include any basic info fields (they should be in preset to be shown)
     for (const [key, value] of Object.entries(customerFields)) {
       const basicInfoKey = customerFieldMapping[key];
-      
+
       // Only include if intro has a preset AND the field is in the preset
       // If no preset, don't show basic info fields (they must be explicitly selected in preset)
       if (hasPreset && basicInfoKey && presetBasicInfoFields.has(basicInfoKey)) {
@@ -4189,7 +4186,7 @@ exports.getIntroFieldValues = async (req, res) => {
         } else {
           fieldName = key.charAt(0).toUpperCase() + key.slice(1);
         }
-        
+
         result.push({
           fieldName: fieldName,
           value: value,
@@ -4434,32 +4431,41 @@ exports.getRecentlySubmittedClients = async (req, res) => {
     const { name } = req.body;
     let customers;
 
-    // If name is not provided, return all non-deleted, inactive customers
     if (!name || name.trim().length < 2) {
       customers = await Customer.find({
         isDeleted: false,
         // activeStatus: false
       });
     } else {
-      // If "all" is passed as name, return all as well
       if (name.trim().toLowerCase() === "all") {
         customers = await Customer.find({
           isDeleted: false,
           // activeStatus: false
         });
       } else {
-        const searchWords = name.trim().split(/\s+/);
+        const searchWords = name
+          .trim()
+          .split(/\s+/)
+          .map(w => w.trim())
+          .filter(Boolean)
+          .map(w => escapeRegex(w))
+          .filter(w => w.replace(/\*/g, '').length > 0);
 
-        const nameConditions = searchWords.map(word => {
-          const regex = new RegExp(word, 'i');
-          return {
-            $or: [
-              { firstName: regex },
-              { middelName: regex },
-              { lastName: regex }
-            ]
-          };
-        });
+        if (!searchWords.length) {
+          return res.status(200).json({
+            success: true,
+            message: "Customers fetched successfully",
+            data: []
+          });
+        }
+
+        const nameConditions = searchWords.map(word => ({
+          $or: [
+            { firstName: { $regex: word, $options: 'i' } },
+            { middelName: { $regex: word, $options: 'i' } },
+            { lastName: { $regex: word, $options: 'i' } }
+          ]
+        }));
 
         customers = await Customer.find({
           isDeleted: false,
@@ -4479,11 +4485,11 @@ exports.getRecentlySubmittedClients = async (req, res) => {
     console.error("Error in getRecentlySubmittedClients:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: error.message
+      message: "Internal server error"
     });
   }
 };
+
 
 exports.getClientSubmissions = async (req, res) => {
   try {
@@ -4854,7 +4860,6 @@ exports.getMonthlyActivitySummary = async (req, res) => {
       message: "30-day activity summary fetched",
       data: result,
     });
-
   } catch (error) {
     console.error("Error in getMonthlyActivitySummary:", error);
     res.status(500).json({
