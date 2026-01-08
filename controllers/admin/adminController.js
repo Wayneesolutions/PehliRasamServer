@@ -2844,11 +2844,12 @@ exports.searchCustomerByName = async (req, res) => {
       });
     }
 
-    const searchWords = name.trim().split(/\s+/); // Split by spaces, handles "manish   prasad"
+    const searchWords = name.trim().split(/\s+/);
 
-    // Create conditions for each word to match any part of the name
     const nameConditions = searchWords.map(word => {
-      const regex = new RegExp(word, 'i');
+      const safeWord = escapeRegex(word);
+      const regex = new RegExp(safeWord, 'i');
+
       return {
         $or: [
           { firstName: regex },
@@ -2858,7 +2859,6 @@ exports.searchCustomerByName = async (req, res) => {
       };
     });
 
-    // Combine all word conditions with AND
     const customers = await Customer.find({
       isDeleted: false,
       $and: nameConditions
@@ -2879,6 +2879,7 @@ exports.searchCustomerByName = async (req, res) => {
     });
   }
 };
+
 
 exports.addCustomerToClientList = async (req, res) => {
   try {
