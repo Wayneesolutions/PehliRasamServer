@@ -92,6 +92,7 @@ const {
   addCustomerPhoto,
   deleteCustomerPhoto,
   proxyImage,
+  downloadExternalPhoto,
 
   createEmailTemplate,
   getAllEmailTemplates,
@@ -201,6 +202,7 @@ router.post("/searchCustomerByName", checkAdminToken, searchCustomerByName)
 router.post("/addCustomerPhoto", checkAdminToken, addCustomerPhoto)
 router.post("/deleteCustomerPhoto", checkAdminToken, deleteCustomerPhoto)
 router.post("/proxyImage", checkAdminToken, proxyImage)
+router.get("/downloadExternalPhoto", checkAdminToken, downloadExternalPhoto)
 
 
 router.post("/addCustomerToClientList", checkAdminToken, addCustomerToClientList)
