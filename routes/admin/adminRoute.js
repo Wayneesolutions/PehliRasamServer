@@ -24,6 +24,10 @@ const {
   updateFromGroup,
   deleteFromGroup,
   getFromGroupList,
+  updateGroupOrder,
+  updateFieldOrder,
+  updatePresetGroupOrder,
+  updatePresetFieldOrder,
   createFromField,
   updateFormField,
   changeFormFieldGroup,
@@ -123,7 +127,8 @@ const {
   createNote,
   getNotes,
   updateNote,
-  deleteNote
+  deleteNote,
+  togglePinCustomer
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -294,6 +299,17 @@ router.post('/notes', checkAdminToken, createNote)
 router.get('/notes', checkAdminToken, getNotes)
 router.put('/notes/:noteId', checkAdminToken, updateNote)
 router.delete('/notes/:noteId', checkAdminToken, deleteNote)
+
+// Pin/Unpin customer route
+router.post('/togglePinCustomer', checkAdminToken, togglePinCustomer)
+
+// Update group and field order routes
+router.post('/updateGroupOrder', checkAdminToken, updateGroupOrder)
+router.post('/updateFieldOrder', checkAdminToken, updateFieldOrder)
+
+// Update preset group and field order routes
+router.post('/updatePresetGroupOrder', checkAdminToken, updatePresetGroupOrder)
+router.post('/updatePresetFieldOrder', checkAdminToken, updatePresetFieldOrder)
 
 
 

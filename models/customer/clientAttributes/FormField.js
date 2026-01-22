@@ -51,6 +51,10 @@ const formFieldSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",
+  },
+  order: {
+    type: Number,
+    default: 0
   }
 }, { timestamps: true });
 

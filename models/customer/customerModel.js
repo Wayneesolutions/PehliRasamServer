@@ -40,6 +40,12 @@ const allowedCities = [
   
 
 const customerSchema = new mongoose.Schema({
+    entryName: {
+        type: String,
+        trim: true,
+        maxlength: 100,
+        default: null
+    },
     firstName: { 
         type: String, 
         required: true, 
@@ -77,6 +83,10 @@ const customerSchema = new mongoose.Schema({
     activeStatus: { 
         type: Boolean, 
         default: true 
+    },
+    isPinned: {
+        type: Boolean,
+        default: false
     },
     imagePath: { 
         type: String, 

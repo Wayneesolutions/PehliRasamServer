@@ -17,6 +17,10 @@ const presetSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  order: {
+    type: Number,
+    default: 0
+  },
 }, { timestamps: true });
 
 const Preset = mongoose.model("Preset", presetSchema);

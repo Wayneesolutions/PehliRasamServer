@@ -465,13 +465,13 @@ exports.deleteFromGroup = async (req, res) => {
 exports.getFromGroupList = async (req, res) => {
   try {
 
-    const formGroup = await FormGroup.find({ isDeleted: false });
+    const formGroup = await FormGroup.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
 
     if (!formGroup) {
       return res.status(404).json({ message: "FormGroup not found" });
     }
 
-    res.status(200).json({ success: true, message: "FormGroup list", formGroup });
+    res.status(200).json({ success: true, message: "FormGroup list", data: formGroup });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -657,9 +657,16 @@ exports.allGroupFieldList = async (req, res) => {
         }
       },
       {
+        $sort: {
+          "fields.order": 1,
+          "fields.createdAt": 1
+        }
+      },
+      {
         $group: {
           _id: "$_id",
           groupName: { $first: "$name" },
+          groupOrder: { $first: "$order" },
           fields: {
             $push: {
               attributeId: "$fields._id",
@@ -667,15 +674,29 @@ exports.allGroupFieldList = async (req, res) => {
               attributeType: "$fields.attributeType",
               attributeStatus: "$fields.attributeState",
               attributeEnum: "$fields.attributeEnum",
-              attributeOption: "$fields.attributeOption"
+              attributeOption: "$fields.attributeOption",
+              order: "$fields.order",
+              visibility: "$fields.visibility",
+              active: "$fields.isActive"
             }
           }
         }
       },
       {
-        $sort: { "groupName": 1 }
+        $sort: { groupOrder: 1, "groupName": 1 }
       }
     ]);
+
+    // Sort fields within each group by order
+    groupFieldList.forEach(group => {
+      if (group.fields && Array.isArray(group.fields)) {
+        group.fields.sort((a, b) => {
+          const orderA = a.order !== undefined ? a.order : 999;
+          const orderB = b.order !== undefined ? b.order : 999;
+          return orderA - orderB;
+        });
+      }
+    });
 
     res.status(200).json({
       success: true,
@@ -1402,7 +1423,7 @@ exports.getCustomerBasicDetail = async (req, res) => {
     }
 
     const customer = await Customer.findOne({ _id: customerId, isDeleted: false })
-      .select("firstName middelName lastName email Number contact address imagePath photos createdAt updatedAt")
+      .select("entryName firstName middelName lastName email Number contact address imagePath photos createdAt updatedAt")
       .lean();
 
     if (!customer) {
@@ -1564,7 +1585,7 @@ exports.allActiveCustomer = async (req, res) => {
   try {
     const customers = await Customer.find(
       { activeStatus: true, isDeleted: false },
-      { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1 }
+      { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
     );
 
     if (!customers.length) {
@@ -1614,7 +1635,7 @@ exports.advancedSearchCustomers = async (req, res) => {
     // Get all active customers first
     let allCustomers = await Customer.find(
       { activeStatus: true, isDeleted: false },
-      { firstName: 1, middelName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, createdAt: 1 }
+      { firstName: 1, middelName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, createdAt: 1, isPinned: 1 }
     );
 
     if (allCustomers.length === 0) {
@@ -1864,7 +1885,7 @@ exports.advancedSearchCustomers = async (req, res) => {
         activeStatus: true,
         isDeleted: false
       },
-      { firstName: 1, middelName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1 }
+      { firstName: 1, middelName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
     );
 
     res.status(200).json({
@@ -3958,7 +3979,7 @@ exports.deletePresetFields = async (req, res) => {
 
 exports.getAllPresetsWithFields = async (req, res) => {
   try {
-    const presets = await Preset.find({ isDeleted: false }).lean();
+    const presets = await Preset.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 }).lean();
 
     if (!presets.length) {
       return res.status(404).json({ message: 'No presets found', success: false });
@@ -3969,7 +3990,7 @@ exports.getAllPresetsWithFields = async (req, res) => {
         const presetFields = await PresetFields.find({
           presetId: preset._id,
           isDeleted: false
-        }).lean();
+        }).sort({ order: 1, createdAt: 1 }).lean();
 
         // Helper function to get basic info field label
         const getBasicInfoFieldLabel = (fieldKey) => {
@@ -5018,7 +5039,7 @@ exports.addCustomer = async (req, res) => {
 
 exports.getActivityLogs = async (req, res) => {
   try {
-    const { customer } = req.body;
+    const { customer, limit = 100, skip = 0 } = req.body; // Add pagination support
 
     if (!customer || customer.trim().length === 0) {
       return res.status(400).json({
@@ -5027,9 +5048,17 @@ exports.getActivityLogs = async (req, res) => {
       });
     }
 
+    // Validate pagination parameters
+    // For "all" queries, default to 200 records to prevent loading too much data
+    // For specific customer, default to 100
+    const isAllCustomers = customer.trim().toLowerCase() === "all";
+    const defaultLimit = isAllCustomers ? 200 : 100;
+    const limitNum = Math.min(parseInt(limit) || defaultLimit, 500); // Max 500 records per request
+    const skipNum = Math.max(parseInt(skip) || 0, 0);
+
     let matchStage = {};
 
-    if (customer.trim().toLowerCase() !== "all") {
+    if (!isAllCustomers) {
       if (!mongoose.Types.ObjectId.isValid(customer)) {
         return res.status(400).json({
           success: false,
@@ -5039,32 +5068,60 @@ exports.getActivityLogs = async (req, res) => {
       matchStage.customerId = new mongoose.Types.ObjectId(customer);
     }
 
+    // Optimized aggregation pipeline
     const logs = await ActivityLog.aggregate([
       { $match: matchStage },
-
-      // Lookup customer data
+      
+      // Sort early to use index, before lookups
+      { $sort: { createdAt: -1 } },
+      
+      // Skip first for pagination
+      { $skip: skipNum },
+      
+      // Then limit to final result size
+      { $limit: limitNum },
+      
+      // Lookup customer data - only select needed fields
       {
         $lookup: {
           from: "customers",
           localField: "customerId",
           foreignField: "_id",
-          as: "customerData"
+          as: "customerData",
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                _id: 1
+              }
+            }
+          ]
         }
       },
       { $unwind: { path: "$customerData", preserveNullAndEmptyArrays: true } },
 
-      // Lookup admin data
+      // Lookup admin data - only select needed fields
       {
         $lookup: {
           from: "admins",
           localField: "performedBy",
           foreignField: "_id",
-          as: "performedBy"
+          as: "performedBy",
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                _id: 1
+              }
+            }
+          ]
         }
       },
       { $unwind: { path: "$performedBy", preserveNullAndEmptyArrays: true } },
 
-      // Optionally project only necessary fields
+      // Project only necessary fields
       {
         $project: {
           action: 1,
@@ -5080,14 +5137,25 @@ exports.getActivityLogs = async (req, res) => {
           "performedBy.lastName": 1,
           "performedBy._id": 1
         }
-      },
-      { $sort: { createdAt: -1 } }
+      }
     ]);
+
+    // Get total count for pagination (only if needed)
+    let totalCount = null;
+    if (skipNum === 0) {
+      totalCount = await ActivityLog.countDocuments(matchStage);
+    }
 
     res.status(200).json({
       success: true,
       message: "Activity logs fetched successfully",
       data: logs,
+      pagination: {
+        limit: limitNum,
+        skip: skipNum,
+        total: totalCount,
+        hasMore: logs.length === limitNum
+      }
     });
   } catch (error) {
     console.error("Error in getActivityLogs:", error);
@@ -5320,6 +5388,384 @@ exports.deleteNote = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error deleting note",
+      error: error.message
+    });
+  }
+};
+
+// Pin/Unpin customer
+exports.togglePinCustomer = async (req, res) => {
+  try {
+    const { customerId } = req.body;
+    const updatedBy = req.id;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required"
+      });
+    }
+
+    const customer = await Customer.findById(customerId);
+
+    if (!customer || customer.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found"
+      });
+    }
+
+    // Toggle pin status
+    customer.isPinned = !customer.isPinned;
+    customer.updatedBy = updatedBy;
+
+    await customer.save();
+
+    // Log activity
+    let adminname = await Admin.findById(updatedBy).select("firstName lastName");
+    let changeSummary = `Customer ${customer.firstName} ${customer.lastName} ${customer.isPinned ? 'pinned' : 'unpinned'} by Admin ${adminname.firstName} ${adminname.lastName}`;
+    await ActivityLog.create({
+      customerId: customerId,
+      performedBy: updatedBy,
+      action: customer.isPinned ? 'Pin Customer' : 'Unpin Customer',
+      changeSummary: changeSummary
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Customer ${customer.isPinned ? 'pinned' : 'unpinned'} successfully`,
+      data: {
+        customerId: customer._id,
+        isPinned: customer.isPinned
+      }
+    });
+  } catch (error) {
+    console.error("Error toggling pin status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error toggling pin status",
+      error: error.message
+    });
+  }
+};
+
+// Update group order
+exports.updateGroupOrder = async (req, res) => {
+  try {
+    const { groupId, direction } = req.body; // direction: 'up' or 'down'
+    const editedBy = req.id;
+
+    if (!groupId || !direction) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Group ID and direction are required" 
+      });
+    }
+
+    const group = await FormGroup.findById(groupId);
+    if (!group || group.isDeleted) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Group not found" 
+      });
+    }
+
+    // Get all groups sorted by order
+    const allGroups = await FormGroup.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
+    const currentIndex = allGroups.findIndex(g => g._id.toString() === groupId);
+
+    if (currentIndex === -1) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Group not found in list" 
+      });
+    }
+
+    let targetIndex;
+    if (direction === 'up' && currentIndex > 0) {
+      targetIndex = currentIndex - 1;
+    } else if (direction === 'down' && currentIndex < allGroups.length - 1) {
+      targetIndex = currentIndex + 1;
+    } else {
+      return res.status(400).json({ 
+        success: false,
+        message: "Cannot move group in that direction" 
+      });
+    }
+
+    // Swap orders
+    const currentOrder = group.order || currentIndex;
+    const targetGroup = allGroups[targetIndex];
+    const targetOrder = targetGroup.order || targetIndex;
+
+    group.order = targetOrder;
+    targetGroup.order = currentOrder;
+    group.editedBy = editedBy;
+    targetGroup.editedBy = editedBy;
+
+    await group.save();
+    await targetGroup.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Group order updated successfully"
+    });
+  } catch (error) {
+    console.error("Error updating group order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating group order",
+      error: error.message
+    });
+  }
+};
+
+// Update field order
+exports.updateFieldOrder = async (req, res) => {
+  try {
+    const { fieldId, direction } = req.body; // direction: 'up' or 'down'
+    const editedBy = req.id;
+
+    if (!fieldId || !direction) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Field ID and direction are required" 
+      });
+    }
+
+    const field = await FormField.findById(fieldId);
+    if (!field || field.isDeleted) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Field not found" 
+      });
+    }
+
+    // Get all fields in the same group sorted by order
+    const allFields = await FormField.find({ 
+      form_group_id: field.form_group_id,
+      isDeleted: false 
+    }).sort({ order: 1, createdAt: 1 });
+    
+    const currentIndex = allFields.findIndex(f => f._id.toString() === fieldId);
+
+    if (currentIndex === -1) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Field not found in list" 
+      });
+    }
+
+    let targetIndex;
+    if (direction === 'up' && currentIndex > 0) {
+      targetIndex = currentIndex - 1;
+    } else if (direction === 'down' && currentIndex < allFields.length - 1) {
+      targetIndex = currentIndex + 1;
+    } else {
+      return res.status(400).json({ 
+        success: false,
+        message: "Cannot move field in that direction" 
+      });
+    }
+
+    // Swap orders
+    const currentOrder = field.order || currentIndex;
+    const targetField = allFields[targetIndex];
+    const targetOrder = targetField.order || targetIndex;
+
+    field.order = targetOrder;
+    targetField.order = currentOrder;
+    field.editedBy = editedBy;
+    targetField.editedBy = editedBy;
+
+    await field.save();
+    await targetField.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Field order updated successfully"
+    });
+  } catch (error) {
+    console.error("Error updating field order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating field order",
+      error: error.message
+    });
+  }
+};
+
+// Update preset group order
+exports.updatePresetGroupOrder = async (req, res) => {
+  try {
+    const { presetId, direction } = req.body; // direction: 'up' or 'down'
+    const editedBy = req.id;
+
+    if (!presetId || !direction) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Preset ID and direction are required" 
+      });
+    }
+
+    const preset = await Preset.findById(presetId);
+    if (!preset || preset.isDeleted) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Preset not found" 
+      });
+    }
+
+    // Get all presets sorted by order
+    const allPresets = await Preset.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
+    const currentIndex = allPresets.findIndex(p => p._id.toString() === presetId);
+
+    if (currentIndex === -1) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Preset not found in list" 
+      });
+    }
+
+    // Check if move is valid
+    if (direction === 'up' && currentIndex === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Preset is already at the top"
+      });
+    }
+
+    if (direction === 'down' && currentIndex === allPresets.length - 1) {
+      return res.status(200).json({
+        success: true,
+        message: "Preset is already at the bottom"
+      });
+    }
+
+    let targetIndex;
+    if (direction === 'up') {
+      targetIndex = currentIndex - 1;
+    } else if (direction === 'down') {
+      targetIndex = currentIndex + 1;
+    } else {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid direction. Use 'up' or 'down'" 
+      });
+    }
+
+    // Swap orders
+    const currentOrder = preset.order !== undefined ? preset.order : currentIndex;
+    const targetPreset = allPresets[targetIndex];
+    const targetOrder = targetPreset.order !== undefined ? targetPreset.order : targetIndex;
+
+    preset.order = targetOrder;
+    targetPreset.order = currentOrder;
+    preset.editedBy = editedBy;
+    targetPreset.editedBy = editedBy;
+
+    await preset.save();
+    await targetPreset.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Preset order updated successfully"
+    });
+  } catch (error) {
+    console.error("Error updating preset order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating preset order",
+      error: error.message
+    });
+  }
+};
+
+// Update preset field order
+exports.updatePresetFieldOrder = async (req, res) => {
+  try {
+    const { presetFieldId, direction } = req.body; // direction: 'up' or 'down'
+    const editedBy = req.id;
+
+    if (!presetFieldId || !direction) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Preset Field ID and direction are required" 
+      });
+    }
+
+    const presetField = await PresetFields.findById(presetFieldId);
+    if (!presetField || presetField.isDeleted) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Preset field not found" 
+      });
+    }
+
+    // Get all fields in the same preset sorted by order
+    const allFields = await PresetFields.find({ 
+      presetId: presetField.presetId,
+      isDeleted: false 
+    }).sort({ order: 1, createdAt: 1 });
+    
+    const currentIndex = allFields.findIndex(f => f._id.toString() === presetFieldId);
+
+    if (currentIndex === -1) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Preset field not found in list" 
+      });
+    }
+
+    // Check if move is valid
+    if (direction === 'up' && currentIndex === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Preset field is already at the top"
+      });
+    }
+
+    if (direction === 'down' && currentIndex === allFields.length - 1) {
+      return res.status(200).json({
+        success: true,
+        message: "Preset field is already at the bottom"
+      });
+    }
+
+    let targetIndex;
+    if (direction === 'up') {
+      targetIndex = currentIndex - 1;
+    } else if (direction === 'down') {
+      targetIndex = currentIndex + 1;
+    } else {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid direction. Use 'up' or 'down'" 
+      });
+    }
+
+    // Swap orders
+    const currentOrder = presetField.order !== undefined ? presetField.order : currentIndex;
+    const targetField = allFields[targetIndex];
+    const targetOrder = targetField.order !== undefined ? targetField.order : targetIndex;
+
+    presetField.order = targetOrder;
+    targetField.order = currentOrder;
+    presetField.editedBy = editedBy;
+    targetField.editedBy = editedBy;
+
+    await presetField.save();
+    await targetField.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Preset field order updated successfully"
+    });
+  } catch (error) {
+    console.error("Error updating preset field order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating preset field order",
       error: error.message
     });
   }

@@ -45,6 +45,10 @@ const presetFieldsSchema = new mongoose.Schema({
   presetId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Preset", // Refers to the Preset model
+  },
+  order: {
+    type: Number,
+    default: 0
   }
 }, { 
   timestamps: true
