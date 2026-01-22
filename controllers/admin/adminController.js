@@ -3008,7 +3008,10 @@ exports.getMatchGroupDetails = async (req, res) => {
       allValues = await MatchGroupValue.find({
         customerId: customerObjectId,
         isDeleted: false
-      }).populate("matchCustomerId");
+      })
+        .populate("matchCustomerId")
+        .populate("createdBy", "firstName lastName email")
+        .sort({ createdAt: -1 }); // Sort by newest first
     }
 
     // Combine groups + their values
@@ -3021,6 +3024,7 @@ exports.getMatchGroupDetails = async (req, res) => {
         count: groupValues.length,
         values: groupValues.map(val => {
           const customer = val.matchCustomerId || {};
+          const createdByAdmin = val.createdBy || {};
 
           return {
             valueId: val._id,
@@ -3032,7 +3036,13 @@ exports.getMatchGroupDetails = async (req, res) => {
             email: customer.email || "N/A",
             imagePath: customer.imagePath || null,
             address: customer.address || {},
-            matchingDescription: val.matchingDescription || ""
+            matchingDescription: val.matchingDescription || "",
+            createdAt: val.createdAt,
+            createdBy: createdByAdmin ? {
+              firstName: createdByAdmin.firstName || "Unknown",
+              lastName: createdByAdmin.lastName || "",
+              email: createdByAdmin.email || ""
+            } : null
           };
         })
       };
