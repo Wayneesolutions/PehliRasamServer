@@ -13,6 +13,7 @@ const { findMatchingUsers } = require('../../services/azureBlobService');
 const Admin = require("../../models/admin/adminModel");
 const FieldType = require("../../models/customer/clientAttributes/fieldType");
 const ClientList = require("../../models/customer/clientList");
+const Note = require("../../models/customer/notes/noteModel");
 const { notificationSchema } = require('../../validations/notificationValidation');
 const { permissionSchema } = require('../../validations/permissionValidation');
 const { basicDetailsSchema } = require('../../validations/basicDetailsValidation');
@@ -5160,6 +5161,156 @@ exports.getMonthlyActivitySummary = async (req, res) => {
       success: false,
       message: "Internal server error",
       error: error.message,
+    });
+  }
+};
+
+// Notes CRUD operations
+exports.createNote = async (req, res) => {
+  try {
+    const { customerId, noteDate, content } = req.body;
+    const createdBy = req.id;
+
+    if (!customerId || !noteDate || !content) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID, date, and content are required"
+      });
+    }
+
+    const note = new Note({
+      customerId,
+      noteDate: new Date(noteDate),
+      content,
+      createdBy,
+      updatedBy: createdBy
+    });
+
+    await note.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Note created successfully",
+      data: note
+    });
+  } catch (error) {
+    console.error("Error creating note:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating note",
+      error: error.message
+    });
+  }
+};
+
+exports.getNotes = async (req, res) => {
+  try {
+    const { customerId } = req.query;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required"
+      });
+    }
+
+    const notes = await Note.find({
+      customerId,
+      isDeleted: false
+    })
+      .sort({ noteDate: -1, createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Notes fetched successfully",
+      data: notes
+    });
+  } catch (error) {
+    console.error("Error fetching notes:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching notes",
+      error: error.message
+    });
+  }
+};
+
+exports.updateNote = async (req, res) => {
+  try {
+    const { noteId } = req.params;
+    const { noteDate, content } = req.body;
+    const updatedBy = req.id;
+
+    if (!noteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Note ID is required"
+      });
+    }
+
+    const note = await Note.findById(noteId);
+
+    if (!note || note.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found"
+      });
+    }
+
+    if (noteDate !== undefined) note.noteDate = new Date(noteDate);
+    if (content !== undefined) note.content = content;
+    note.updatedBy = updatedBy;
+
+    await note.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Note updated successfully",
+      data: note
+    });
+  } catch (error) {
+    console.error("Error updating note:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating note",
+      error: error.message
+    });
+  }
+};
+
+exports.deleteNote = async (req, res) => {
+  try {
+    const { noteId } = req.params;
+
+    if (!noteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Note ID is required"
+      });
+    }
+
+    const note = await Note.findById(noteId);
+
+    if (!note || note.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found"
+      });
+    }
+
+    note.isDeleted = true;
+    await note.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Note deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting note:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting note",
+      error: error.message
     });
   }
 };

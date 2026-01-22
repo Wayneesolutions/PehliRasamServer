@@ -119,7 +119,11 @@ const {
   getPresetById,
   getIntroSummaries,
   sendMailForIntro,
-  deleteCustomer
+  deleteCustomer,
+  createNote,
+  getNotes,
+  updateNote,
+  deleteNote
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -285,6 +289,11 @@ router.get("/getAllIntroSummaries", checkAdminToken, getIntroSummaries);
 router.post("/updateIntroExpiration", checkAdminToken, updateIntroExpiration);
 router.delete('/delete-customer/:customerId',checkAdminToken,deleteCustomer)
 
+// Notes routes
+router.post('/notes', checkAdminToken, createNote)
+router.get('/notes', checkAdminToken, getNotes)
+router.put('/notes/:noteId', checkAdminToken, updateNote)
+router.delete('/notes/:noteId', checkAdminToken, deleteNote)
 
 
 
