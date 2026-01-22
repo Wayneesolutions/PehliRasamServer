@@ -1588,6 +1588,300 @@ exports.allActiveCustomer = async (req, res) => {
   }
 };
 
+exports.advancedSearchCustomers = async (req, res) => {
+  try {
+    const { searchCriteria } = req.body;
+
+    if (!searchCriteria || !Array.isArray(searchCriteria)) {
+      return res.status(400).json({
+        success: false,
+        message: "Search criteria is required and must be an array"
+      });
+    }
+
+    // Map frontend field names to actual FormField attributeNames
+    const fieldNameMapping = {
+      membershipType: "Membership Type",
+      gender: "Gender",
+      caste: "Caste",
+      birthday: "Birthday (Age)",
+      height: "Height (ft & in)",
+      maritalStatus: "Marital Status",
+      registeredBy: "Registered By"
+    };
+
+    // Get all active customers first
+    let allCustomers = await Customer.find(
+      { activeStatus: true, isDeleted: false },
+      { firstName: 1, middelName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, createdAt: 1 }
+    );
+
+    if (allCustomers.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No customers found",
+        data: []
+      });
+    }
+
+    // Get all active fields
+    const allFields = await FormField.find({ isDeleted: false, isActive: true });
+    
+    // Create a map of attributeName to fieldId for quick lookup
+    const fieldNameToIdMap = {};
+    allFields.forEach(field => {
+      fieldNameToIdMap[field.attributeName] = field._id;
+    });
+
+    // Start with all customer IDs
+    let filteredCustomerIds = new Set(allCustomers.map(c => c._id.toString()));
+
+    // Process each search criterion
+    for (const criterion of searchCriteria) {
+      if (!criterion.field) {
+        continue; // Skip invalid criteria
+      }
+
+      const field = criterion.field;
+      const value = criterion.value;
+
+      // Skip empty criteria
+      if (field === "location" && (!value || !value.trim())) {
+        continue;
+      }
+      if (field === "registeredOnDate" && (!Array.isArray(value) || (!value[0] && !value[1]))) {
+        continue;
+      }
+      if ((field === "birthday" || field === "height") && (!Array.isArray(value) || (!value[0] && !value[1]))) {
+        continue;
+      }
+      if (field !== "location" && field !== "registeredOnDate" && field !== "birthday" && field !== "height" && (!value || !value.trim())) {
+        continue;
+      }
+
+      // Handle location search (uses Customer model directly)
+      if (field === "location") {
+        const locationValue = value.toLowerCase().trim();
+        // Get current filtered customers
+        const currentCustomers = await Customer.find(
+          { 
+            _id: { $in: Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id)) },
+            activeStatus: true,
+            isDeleted: false
+          },
+          { _id: 1, address: 1 }
+        );
+        
+        const locationMatches = currentCustomers.filter(customer => {
+          const city = customer.address?.city?.toLowerCase() || "";
+          const state = customer.address?.state?.toLowerCase() || "";
+          const country = customer.address?.country?.toLowerCase() || "";
+          return city.includes(locationValue) || 
+                 state.includes(locationValue) || 
+                 country.includes(locationValue);
+        }).map(c => c._id.toString());
+        
+        // Intersect with current filtered IDs
+        filteredCustomerIds = new Set(
+          Array.from(filteredCustomerIds).filter(id => locationMatches.includes(id))
+        );
+        continue;
+      }
+
+      // Handle registeredOnDate (uses Customer createdAt)
+      if (field === "registeredOnDate") {
+        const fromDate = value[0] ? new Date(value[0]) : null;
+        const toDate = value[1] ? new Date(value[1]) : null;
+        if (toDate) {
+          toDate.setHours(23, 59, 59, 999); // End of day
+        }
+        
+        // Get current filtered customers
+        const currentCustomers = await Customer.find(
+          { 
+            _id: { $in: Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id)) },
+            activeStatus: true,
+            isDeleted: false
+          },
+          { _id: 1, createdAt: 1 }
+        );
+        
+        const dateMatches = currentCustomers.filter(customer => {
+          const createdAt = new Date(customer.createdAt);
+          if (fromDate && toDate) {
+            return createdAt >= fromDate && createdAt <= toDate;
+          } else if (fromDate) {
+            return createdAt >= fromDate;
+          } else if (toDate) {
+            return createdAt <= toDate;
+          }
+          return false;
+        }).map(c => c._id.toString());
+        
+        // Intersect with current filtered IDs
+        filteredCustomerIds = new Set(
+          Array.from(filteredCustomerIds).filter(id => dateMatches.includes(id))
+        );
+        continue;
+      }
+
+      // Get the actual field name from mapping
+      const actualFieldName = fieldNameMapping[field];
+      if (!actualFieldName) {
+        continue; // Skip unknown fields
+      }
+
+      // Get fieldId for this field
+      const fieldId = fieldNameToIdMap[actualFieldName];
+      if (!fieldId) {
+        continue; // Field doesn't exist
+      }
+
+      // Handle range fields (birthday/age, height)
+      if (field === "birthday" || field === "height") {
+        const minValue = value[0] ? parseFloat(value[0]) : null;
+        const maxValue = value[1] ? parseFloat(value[1]) : null;
+
+        if (minValue === null && maxValue === null) {
+          continue; // Skip if both are empty
+        }
+
+        // Get all values for this field for current filtered customers
+        const fieldValues = await FormFieldsValue.find({
+          fieldId: fieldId,
+          customerId: { $in: Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id)) }
+        });
+
+        const matchingCustomerIds = new Set();
+
+        for (const fieldValue of fieldValues) {
+          if (field === "birthday") {
+            // Calculate age from birthday
+            try {
+              const birthDate = new Date(fieldValue.value);
+              if (isNaN(birthDate.getTime())) continue;
+              
+              const today = new Date();
+              let age = today.getFullYear() - birthDate.getFullYear();
+              const monthDiff = today.getMonth() - birthDate.getMonth();
+              if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+              }
+
+              if ((minValue === null || age >= minValue) && (maxValue === null || age <= maxValue)) {
+                matchingCustomerIds.add(fieldValue.customerId.toString());
+              }
+            } catch (e) {
+              continue; // Skip invalid dates
+            }
+          } else if (field === "height") {
+            // Parse height - handle formats like "5'10", "5.10", "510"
+            try {
+              let heightValue = null;
+              const heightStr = fieldValue.value.toString().trim();
+              
+              // Try parsing as feet'inches format (e.g., "5'10")
+              const feetInchesMatch = heightStr.match(/(\d+)['"]?\s*(\d+)/);
+              if (feetInchesMatch) {
+                const feet = parseFloat(feetInchesMatch[1]);
+                const inches = parseFloat(feetInchesMatch[2]);
+                heightValue = feet * 12 + inches; // Convert to total inches
+              } else {
+                // Try parsing as decimal (e.g., "5.10" meaning 5 feet 10 inches)
+                const decimalMatch = heightStr.match(/(\d+)\.(\d+)/);
+                if (decimalMatch) {
+                  const feet = parseFloat(decimalMatch[1]);
+                  const inches = parseFloat(decimalMatch[2]);
+                  heightValue = feet * 12 + inches;
+                } else {
+                  // Try direct number
+                  heightValue = parseFloat(heightStr);
+                }
+              }
+
+              if (heightValue !== null && !isNaN(heightValue)) {
+                if ((minValue === null || heightValue >= minValue) && (maxValue === null || heightValue <= maxValue)) {
+                  matchingCustomerIds.add(fieldValue.customerId.toString());
+                }
+              }
+            } catch (e) {
+              continue; // Skip invalid heights
+            }
+          }
+        }
+
+        // Intersect with current filtered IDs
+        filteredCustomerIds = new Set(
+          Array.from(filteredCustomerIds).filter(id => matchingCustomerIds.has(id))
+        );
+        continue;
+      }
+
+      // Handle exact match fields (gender, caste, maritalStatus, membershipType, registeredBy)
+      const searchValue = value.trim().toLowerCase();
+
+      // Get all values for this field for current filtered customers
+      const fieldValues = await FormFieldsValue.find({
+        fieldId: fieldId,
+        customerId: { $in: Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id)) }
+      });
+
+      const matchingCustomerIds = new Set();
+
+      for (const fieldValue of fieldValues) {
+        if (!fieldValue.value) continue;
+        
+        // Normalize the stored value: trim whitespace and convert to lowercase
+        const storedValue = fieldValue.value.toString().trim().toLowerCase();
+        
+        // Use exact match (case-insensitive) for select fields like gender, caste, etc.
+        // This ensures "male" only matches "male" and not "female"
+        if (storedValue === searchValue) {
+          matchingCustomerIds.add(fieldValue.customerId.toString());
+        }
+      }
+
+      // Intersect with current filtered IDs
+      filteredCustomerIds = new Set(
+        Array.from(filteredCustomerIds).filter(id => matchingCustomerIds.has(id))
+      );
+    }
+
+    // Get final filtered customers
+    if (filteredCustomerIds.size === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No customers match the search criteria",
+        data: []
+      });
+    }
+
+    const finalCustomerIds = Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id));
+    const filteredCustomers = await Customer.find(
+      { 
+        _id: { $in: finalCustomerIds },
+        activeStatus: true,
+        isDeleted: false
+      },
+      { firstName: 1, middelName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1 }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Advanced search completed successfully",
+      data: filteredCustomers
+    });
+
+  } catch (error) {
+    console.error("Error in advancedSearchCustomers:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error performing advanced search",
+      error: error.message
+    });
+  }
+};
+
 
 exports.createClientList = async (req, res) => {
   try {

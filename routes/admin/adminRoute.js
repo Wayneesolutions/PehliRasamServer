@@ -43,6 +43,7 @@ const {
   getCustomerBasicDetail,
   getCustomerProfileDetail,
   getCustomerMatchPreferencesDetail,
+  advancedSearchCustomers,
 
   getMatchGroupDetails,
   getMatchingSuggestions,
@@ -195,6 +196,7 @@ router.post("/deleteCustomer", checkAdminToken, reactivateCustomer)
 router.post("/customerProfile", checkAdminToken, getCustomerProfile)
 router.get("/allActiveCustomer", checkAdminToken, allActiveCustomer)
 router.post("/getCustomerBasicDetail", checkAdminToken, getCustomerBasicDetail)
+router.post("/advancedSearchCustomers", checkAdminToken, advancedSearchCustomers)
 router.post("/getCustomerProfileDetail", checkAdminToken, getCustomerProfileDetail)
 router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMatchPreferencesDetail)
 router.post("/getMatchGroupDetails", checkAdminToken, getMatchGroupDetails)
@@ -245,6 +247,7 @@ router.post("/getEmailTemplateById", checkAdminToken, getEmailTemplateById)
 router.post("/sendCustomerMail", checkAdminToken, sendCustomerMail)
 router.post("/sendMailForIntro", checkAdminToken, sendMailForIntro)
 router.post("/mailLogs", checkAdminToken, getMailLogs)
+router.post("/sendBirthdayReminders", checkAdminToken, require("../../controllers/admin/birthdayController").sendBirthdayReminders)
 // router.get("/searchMailLogs", checkAdminToken, searchMailLogs)
 
 

@@ -217,3 +217,5 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [] }
 };
 
 module.exports = sendEmail;
+
+
