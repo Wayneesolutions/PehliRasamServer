@@ -4646,7 +4646,7 @@ exports.getIntroFieldValues = async (req, res) => {
 exports.getIntroSummaries = async (req, res) => {
   try {
     const intros = await Intro.find({ isDeleted: false })
-      .populate("customerId", "firstName middelName lastName") // get only name fields
+      .populate("customerId", "_id firstName middelName lastName") // include _id in populated fields
       .select("introId customerId createdAt sentCount viewed total")
       .sort({ createdAt: -1 }) // Sort by newest first
       .lean();
@@ -4660,6 +4660,24 @@ exports.getIntroSummaries = async (req, res) => {
 
     const result = intros.map((intro) => {
       const customer = intro.customerId;
+      
+      // Extract customerId - when populated with .lean(), customerId is an object with _id property
+      let customerId = null;
+      if (customer && customer._id) {
+        // Populated object has _id property
+        customerId = customer._id.toString();
+      } else if (intro.customerId) {
+        // Fallback: if not populated or structure is different, try direct access
+        if (typeof intro.customerId === 'object' && intro.customerId.toString) {
+          const idStr = intro.customerId.toString();
+          // Only use if it's a valid ObjectId string (24 hex characters)
+          if (idStr && idStr.length === 24 && /^[0-9a-fA-F]{24}$/.test(idStr)) {
+            customerId = idStr;
+          }
+        } else if (typeof intro.customerId === 'string') {
+          customerId = intro.customerId;
+        }
+      }
 
       const fullName = [
         customer?.firstName || 'NA',
@@ -4671,6 +4689,7 @@ exports.getIntroSummaries = async (req, res) => {
 
       return {
         introId: intro.introId,
+        customerId: customerId,
         customerName: fullName,
         createdAt: intro.createdAt,
         stats: `${intro.sentCount} sent / ${intro.viewed} viewed / ${intro.total} total`
@@ -5506,15 +5525,210 @@ exports.updateGroupOrder = async (req, res) => {
     await group.save();
     await targetGroup.save();
 
+    // Fetch updated groups with fields using the same aggregation as allGroupFieldList
+    const groupFieldList = await FormGroup.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "formfields",
+          localField: "_id",
+          foreignField: "form_group_id",
+          as: "fields"
+        }
+      },
+      {
+        $unwind: {
+          path: "$fields",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { "fields.isDeleted": { $exists: false } }, // not present
+            { "fields.isDeleted": false } // explicitly false
+          ]
+        }
+      },
+      {
+        $sort: {
+          "fields.order": 1,
+          "fields.createdAt": 1
+        }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          groupName: { $first: "$name" },
+          groupOrder: { $first: "$order" },
+          fields: {
+            $push: {
+              attributeId: "$fields._id",
+              attributeName: "$fields.attributeName",
+              attributeType: "$fields.attributeType",
+              attributeStatus: "$fields.attributeState",
+              attributeEnum: "$fields.attributeEnum",
+              attributeOption: "$fields.attributeOption",
+              order: "$fields.order",
+              visibility: "$fields.visibility",
+              active: "$fields.isActive"
+            }
+          }
+        }
+      },
+      {
+        $sort: { groupOrder: 1, "groupName": 1 }
+      }
+    ]);
+
+    // Sort fields within each group by order
+    groupFieldList.forEach(group => {
+      if (group.fields && Array.isArray(group.fields)) {
+        group.fields.sort((a, b) => {
+          const orderA = a.order !== undefined ? a.order : 999;
+          const orderB = b.order !== undefined ? b.order : 999;
+          return orderA - orderB;
+        });
+      }
+    });
+
     res.status(200).json({
       success: true,
-      message: "Group order updated successfully"
+      message: "Form groups with their fields retrieved successfully.",
+      data: groupFieldList
     });
   } catch (error) {
     console.error("Error updating group order:", error);
     res.status(500).json({
       success: false,
       message: "Error updating group order",
+      error: error.message
+    });
+  }
+};
+
+// Bulk update group order (Trello/Notion style - single API call with all positions)
+exports.updateGroupsOrder = async (req, res) => {
+  try {
+    const { groups: groupsData } = req.body; // Array of { id, position }
+    const editedBy = req.id;
+
+    if (!groupsData || !Array.isArray(groupsData) || groupsData.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Groups array with id and position is required" 
+      });
+    }
+
+    // Validate all groups exist
+    const groupIds = groupsData.map(g => g.id);
+    const allGroups = await FormGroup.find({ 
+      _id: { $in: groupIds },
+      isDeleted: false 
+    });
+
+    if (allGroups.length !== groupIds.length) {
+      return res.status(404).json({ 
+        success: false,
+        message: "One or more groups not found" 
+      });
+    }
+
+    // Update all groups with their new positions
+    const updatePromises = groupsData.map(({ id, position }) => 
+      FormGroup.findByIdAndUpdate(
+        id,
+        { 
+          order: position,
+          editedBy: editedBy
+        },
+        { new: true }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated groups with fields using the same aggregation as allGroupFieldList
+    const groupFieldList = await FormGroup.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "formfields",
+          localField: "_id",
+          foreignField: "form_group_id",
+          as: "fields"
+        }
+      },
+      {
+        $unwind: {
+          path: "$fields",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { "fields.isDeleted": { $exists: false } }, // not present
+            { "fields.isDeleted": false } // explicitly false
+          ]
+        }
+      },
+      {
+        $sort: {
+          "fields.order": 1,
+          "fields.createdAt": 1
+        }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          groupName: { $first: "$name" },
+          groupOrder: { $first: "$order" },
+          fields: {
+            $push: {
+              attributeId: "$fields._id",
+              attributeName: "$fields.attributeName",
+              attributeType: "$fields.attributeType",
+              attributeStatus: "$fields.attributeState",
+              attributeEnum: "$fields.attributeEnum",
+              attributeOption: "$fields.attributeOption",
+              order: "$fields.order",
+              visibility: "$fields.visibility",
+              active: "$fields.isActive"
+            }
+          }
+        }
+      },
+      {
+        $sort: { groupOrder: 1, "groupName": 1 }
+      }
+    ]);
+
+    // Sort fields within each group by order
+    groupFieldList.forEach(group => {
+      if (group.fields && Array.isArray(group.fields)) {
+        group.fields.sort((a, b) => {
+          const orderA = a.order !== undefined ? a.order : 999;
+          const orderB = b.order !== undefined ? b.order : 999;
+          return orderA - orderB;
+        });
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Form groups with their fields retrieved successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    console.error("Error updating groups order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating groups order",
       error: error.message
     });
   }
@@ -5590,6 +5804,140 @@ exports.updateFieldOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error updating field order",
+      error: error.message
+    });
+  }
+};
+
+// Bulk update field order (Trello/Notion style - single API call with all positions)
+exports.updateFieldsOrder = async (req, res) => {
+  try {
+    const { fields } = req.body; // Array of { id, position }
+    const editedBy = req.id;
+
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Fields array with id and position is required" 
+      });
+    }
+
+    // Validate all fields belong to the same group
+    const fieldIds = fields.map(f => f.id);
+    const allFields = await FormField.find({ 
+      _id: { $in: fieldIds },
+      isDeleted: false 
+    });
+
+    if (allFields.length !== fieldIds.length) {
+      return res.status(404).json({ 
+        success: false,
+        message: "One or more fields not found" 
+      });
+    }
+
+    // Check all fields belong to the same group
+    const groupIds = [...new Set(allFields.map(f => f.form_group_id.toString()))];
+    if (groupIds.length > 1) {
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields must belong to the same group" 
+      });
+    }
+
+    // Update all fields with their new positions
+    const updatePromises = fields.map(({ id, position }) => 
+      FormField.findByIdAndUpdate(
+        id,
+        { 
+          order: position,
+          editedBy: editedBy
+        },
+        { new: true }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated groups with fields using the same aggregation as allGroupFieldList
+    const groupFieldList = await FormGroup.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "formfields",
+          localField: "_id",
+          foreignField: "form_group_id",
+          as: "fields"
+        }
+      },
+      {
+        $unwind: {
+          path: "$fields",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { "fields.isDeleted": { $exists: false } }, // not present
+            { "fields.isDeleted": false } // explicitly false
+          ]
+        }
+      },
+      {
+        $sort: {
+          "fields.order": 1,
+          "fields.createdAt": 1
+        }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          groupName: { $first: "$name" },
+          groupOrder: { $first: "$order" },
+          fields: {
+            $push: {
+              attributeId: "$fields._id",
+              attributeName: "$fields.attributeName",
+              attributeType: "$fields.attributeType",
+              attributeStatus: "$fields.attributeState",
+              attributeEnum: "$fields.attributeEnum",
+              attributeOption: "$fields.attributeOption",
+              order: "$fields.order",
+              visibility: "$fields.visibility",
+              active: "$fields.isActive"
+            }
+          }
+        }
+      },
+      {
+        $sort: { groupOrder: 1, "groupName": 1 }
+      }
+    ]);
+
+    // Sort fields within each group by order
+    groupFieldList.forEach(group => {
+      if (group.fields && Array.isArray(group.fields)) {
+        group.fields.sort((a, b) => {
+          const orderA = a.order !== undefined ? a.order : 999;
+          const orderB = b.order !== undefined ? b.order : 999;
+          return orderA - orderB;
+        });
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Form groups with their fields retrieved successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    console.error("Error updating fields order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating fields order",
       error: error.message
     });
   }
@@ -5676,6 +6024,417 @@ exports.updatePresetGroupOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error updating preset order",
+      error: error.message
+    });
+  }
+};
+
+// Bulk update preset order (Trello/Notion style - single API call with all positions)
+exports.updatePresetsOrder = async (req, res) => {
+  try {
+    const { presets: presetsData } = req.body; // Array of { id, position }
+    const editedBy = req.id;
+
+    if (!presetsData || !Array.isArray(presetsData) || presetsData.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Presets array with id and position is required" 
+      });
+    }
+
+    // Validate all presets exist
+    const presetIds = presetsData.map(p => p.id);
+    const allPresets = await Preset.find({ 
+      _id: { $in: presetIds },
+      isDeleted: false 
+    });
+
+    if (allPresets.length !== presetIds.length) {
+      return res.status(404).json({ 
+        success: false,
+        message: "One or more presets not found" 
+      });
+    }
+
+    // Update all presets with their new positions
+    const updatePromises = presetsData.map(({ id, position }) => 
+      Preset.findByIdAndUpdate(
+        id,
+        { 
+          order: position,
+          editedBy: editedBy
+        },
+        { new: true }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated presets with fields using the same logic as getAllPresetsWithFields
+    const presets = await Preset.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 }).lean();
+
+    if (!presets.length) {
+      return res.status(404).json({ message: 'No presets found', success: false });
+    }
+
+    const presetsWithFields = await Promise.all(
+      presets.map(async (preset) => {
+        const presetFields = await PresetFields.find({
+          presetId: preset._id,
+          isDeleted: false
+        }).sort({ order: 1, createdAt: 1 }).lean();
+
+        // Helper function to get basic info field label
+        const getBasicInfoFieldLabel = (fieldKey) => {
+          const basicInfoMap = {
+            'basic-firstName': 'First Name',
+            'basic-middleName': 'Middle Name',
+            'basic-lastName': 'Last Name',
+            'basic-email': 'Email',
+            'basic-phone': 'Phone Number',
+            'basic-address-street': 'Address (Street)',
+            'basic-address-city': 'City',
+            'basic-address-state': 'State',
+            'basic-address-postalCode': 'Postal Code',
+            'basic-address-country': 'Country'
+          };
+          return basicInfoMap[fieldKey] || fieldKey;
+        };
+
+        const formattedFields = await Promise.all(
+          presetFields.map(async (field) => {
+            // Handle basic info fields - check basicInfoFieldKey instead
+            if (field.isBasicInfo && field.basicInfoFieldKey) {
+              return {
+                presetFieldId: field._id,
+                id: field.basicInfoFieldKey,
+                Label: getBasicInfoFieldLabel(field.basicInfoFieldKey),
+                Kind: "profile",
+                Field: "text",
+                Required: field.isRequired,
+                AllowEdit: field.AllowEdit,
+                isBasicInfo: true
+              };
+            }
+
+            let fieldData = null;
+
+            if (field.fieldsFor === 'profile') {
+              if (field.fieldsId && mongoose.Types.ObjectId.isValid(field.fieldsId)) {
+                fieldData = await FormField.findOne({
+                  _id: field.fieldsId,
+                  isDeleted: false
+                }).lean();
+
+                if (fieldData) {
+                  return {
+                    presetFieldId: field._id,
+                    id: field.fieldsId,
+                    Label: fieldData.attributeName,
+                    Kind: "profile",
+                    Field: fieldData.attributeType,
+                    Required: field.isRequired,
+                    AllowEdit: field.AllowEdit
+                  };
+                }
+              }
+            } else if (field.fieldsFor === 'Preferences') {
+              fieldData = await PreferencesFields.findOne({
+                _id: field.fieldsId,
+                isDeleted: false
+              }).lean();
+
+              if (fieldData) {
+                return {
+                  presetFieldId: field._id,
+                  id: field.fieldsId,
+                  Label: fieldData.label,
+                  Kind: "preference",
+                  Field: fieldData.profileField,
+                  Required: field.isRequired,
+                  AllowEdit: field.AllowEdit
+                };
+              }
+            }
+
+            return null;
+          })
+        );
+
+        const finalFormattedFields = formattedFields.filter(Boolean);
+
+        return {
+          ...preset,
+          fields: finalFormattedFields
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Presets with their fields retrieved successfully.",
+      data: presetsWithFields
+    });
+  } catch (error) {
+    console.error("Error updating presets order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating presets order",
+      error: error.message
+    });
+  }
+};
+
+// Bulk update preset field order (Trello/Notion style - single API call with all positions)
+exports.updatePresetFieldsOrder = async (req, res) => {
+  try {
+    const { fields } = req.body; // Array of { id, position }
+    const editedBy = req.id;
+
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Fields array with id and position is required" 
+      });
+    }
+
+    // Validate all fields belong to the same preset
+    const fieldIds = fields.map(f => f.id);
+    const allFields = await PresetFields.find({ 
+      _id: { $in: fieldIds },
+      isDeleted: false 
+    });
+
+    if (allFields.length !== fieldIds.length) {
+      return res.status(404).json({ 
+        success: false,
+        message: "One or more fields not found" 
+      });
+    }
+
+    // Check all fields belong to the same preset
+    const presetIds = [...new Set(allFields.map(f => f.presetId.toString()))];
+    if (presetIds.length > 1) {
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields must belong to the same preset" 
+      });
+    }
+
+    // Update all fields with their new positions
+    const updatePromises = fields.map(({ id, position }) => 
+      PresetFields.findByIdAndUpdate(
+        id,
+        { 
+          order: position,
+          editedBy: editedBy
+        },
+        { new: true }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated preset with fields using the same logic as getAllPresetsWithFields
+    const presetId = presetIds[0];
+    const preset = await Preset.findById(presetId).lean();
+
+    if (!preset || preset.isDeleted) {
+      return res.status(404).json({ message: 'Preset not found', success: false });
+    }
+
+    const presetFields = await PresetFields.find({
+      presetId: preset._id,
+      isDeleted: false
+    }).sort({ order: 1, createdAt: 1 }).lean();
+
+    // Helper function to get basic info field label
+    const getBasicInfoFieldLabel = (fieldKey) => {
+      const basicInfoMap = {
+        'basic-firstName': 'First Name',
+        'basic-middleName': 'Middle Name',
+        'basic-lastName': 'Last Name',
+        'basic-email': 'Email',
+        'basic-phone': 'Phone Number',
+        'basic-address-street': 'Address (Street)',
+        'basic-address-city': 'City',
+        'basic-address-state': 'State',
+        'basic-address-postalCode': 'Postal Code',
+        'basic-address-country': 'Country'
+      };
+      return basicInfoMap[fieldKey] || fieldKey;
+    };
+
+    const formattedFields = await Promise.all(
+      presetFields.map(async (field) => {
+        // Handle basic info fields
+        if (field.isBasicInfo && field.basicInfoFieldKey) {
+          return {
+            presetFieldId: field._id,
+            id: field.basicInfoFieldKey,
+            Label: getBasicInfoFieldLabel(field.basicInfoFieldKey),
+            Kind: "profile",
+            Field: "text",
+            Required: field.isRequired,
+            AllowEdit: field.AllowEdit,
+            isBasicInfo: true
+          };
+        }
+
+        let fieldData = null;
+
+        if (field.fieldsFor === 'profile') {
+          if (field.fieldsId && mongoose.Types.ObjectId.isValid(field.fieldsId)) {
+            fieldData = await FormField.findOne({
+              _id: field.fieldsId,
+              isDeleted: false
+            }).lean();
+
+            if (fieldData) {
+              return {
+                presetFieldId: field._id,
+                id: field.fieldsId,
+                Label: fieldData.attributeName,
+                Kind: "profile",
+                Field: fieldData.attributeType,
+                Required: field.isRequired,
+                AllowEdit: field.AllowEdit
+              };
+            }
+          }
+        } else if (field.fieldsFor === 'Preferences') {
+          fieldData = await PreferencesFields.findOne({
+            _id: field.fieldsId,
+            isDeleted: false
+          }).lean();
+
+          if (fieldData) {
+            return {
+              presetFieldId: field._id,
+              id: field.fieldsId,
+              Label: fieldData.label,
+              Kind: "preference",
+              Field: fieldData.profileField,
+              Required: field.isRequired,
+              AllowEdit: field.AllowEdit
+            };
+          }
+        }
+
+        return null;
+      })
+    );
+
+    const finalFormattedFields = formattedFields.filter(Boolean);
+
+    // Get all presets to return full structure
+    const allPresets = await Preset.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 }).lean();
+    const presetsWithFields = await Promise.all(
+      allPresets.map(async (p) => {
+        if (p._id.toString() === presetId) {
+          return {
+            ...p,
+            fields: finalFormattedFields
+          };
+        }
+        
+        const pFields = await PresetFields.find({
+          presetId: p._id,
+          isDeleted: false
+        }).sort({ order: 1, createdAt: 1 }).lean();
+
+        const getBasicInfoFieldLabel = (fieldKey) => {
+          const basicInfoMap = {
+            'basic-firstName': 'First Name',
+            'basic-middleName': 'Middle Name',
+            'basic-lastName': 'Last Name',
+            'basic-email': 'Email',
+            'basic-phone': 'Phone Number',
+            'basic-address-street': 'Address (Street)',
+            'basic-address-city': 'City',
+            'basic-address-state': 'State',
+            'basic-address-postalCode': 'Postal Code',
+            'basic-address-country': 'Country'
+          };
+          return basicInfoMap[fieldKey] || fieldKey;
+        };
+
+        const pFormattedFields = await Promise.all(
+          pFields.map(async (field) => {
+            if (field.isBasicInfo && field.basicInfoFieldKey) {
+              return {
+                presetFieldId: field._id,
+                id: field.basicInfoFieldKey,
+                Label: getBasicInfoFieldLabel(field.basicInfoFieldKey),
+                Kind: "profile",
+                Field: "text",
+                Required: field.isRequired,
+                AllowEdit: field.AllowEdit,
+                isBasicInfo: true
+              };
+            }
+
+            let fieldData = null;
+
+            if (field.fieldsFor === 'profile') {
+              if (field.fieldsId && mongoose.Types.ObjectId.isValid(field.fieldsId)) {
+                fieldData = await FormField.findOne({
+                  _id: field.fieldsId,
+                  isDeleted: false
+                }).lean();
+
+                if (fieldData) {
+                  return {
+                    presetFieldId: field._id,
+                    id: field.fieldsId,
+                    Label: fieldData.attributeName,
+                    Kind: "profile",
+                    Field: fieldData.attributeType,
+                    Required: field.isRequired,
+                    AllowEdit: field.AllowEdit
+                  };
+                }
+              }
+            } else if (field.fieldsFor === 'Preferences') {
+              fieldData = await PreferencesFields.findOne({
+                _id: field.fieldsId,
+                isDeleted: false
+              }).lean();
+
+              if (fieldData) {
+                return {
+                  presetFieldId: field._id,
+                  id: field.fieldsId,
+                  Label: fieldData.label,
+                  Kind: "preference",
+                  Field: fieldData.profileField,
+                  Required: field.isRequired,
+                  AllowEdit: field.AllowEdit
+                };
+              }
+            }
+
+            return null;
+          })
+        );
+
+        return {
+          ...p,
+          fields: pFormattedFields.filter(Boolean)
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Presets with their fields retrieved successfully.",
+      data: presetsWithFields
+    });
+  } catch (error) {
+    console.error("Error updating preset fields order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating preset fields order",
       error: error.message
     });
   }

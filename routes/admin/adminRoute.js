@@ -25,9 +25,13 @@ const {
   deleteFromGroup,
   getFromGroupList,
   updateGroupOrder,
+  updateGroupsOrder,
   updateFieldOrder,
+  updateFieldsOrder,
   updatePresetGroupOrder,
+  updatePresetsOrder,
   updatePresetFieldOrder,
+  updatePresetFieldsOrder,
   createFromField,
   updateFormField,
   changeFormFieldGroup,
@@ -257,6 +261,7 @@ router.post("/sendCustomerMail", checkAdminToken, sendCustomerMail)
 router.post("/sendMailForIntro", checkAdminToken, sendMailForIntro)
 router.post("/mailLogs", checkAdminToken, getMailLogs)
 router.post("/sendBirthdayReminders", checkAdminToken, require("../../controllers/admin/birthdayController").sendBirthdayReminders)
+router.post("/sendMembershipReminders", checkAdminToken, require("../../controllers/admin/membershipReminderController").sendMembershipReminders)
 // router.get("/searchMailLogs", checkAdminToken, searchMailLogs)
 
 
@@ -305,11 +310,15 @@ router.post('/togglePinCustomer', checkAdminToken, togglePinCustomer)
 
 // Update group and field order routes
 router.post('/updateGroupOrder', checkAdminToken, updateGroupOrder)
+router.post('/updateGroupsOrder', checkAdminToken, updateGroupsOrder)
 router.post('/updateFieldOrder', checkAdminToken, updateFieldOrder)
+router.post('/updateFieldsOrder', checkAdminToken, updateFieldsOrder)
 
 // Update preset group and field order routes
 router.post('/updatePresetGroupOrder', checkAdminToken, updatePresetGroupOrder)
+router.post('/updatePresetsOrder', checkAdminToken, updatePresetsOrder)
 router.post('/updatePresetFieldOrder', checkAdminToken, updatePresetFieldOrder)
+router.post('/updatePresetFieldsOrder', checkAdminToken, updatePresetFieldsOrder)
 
 
 

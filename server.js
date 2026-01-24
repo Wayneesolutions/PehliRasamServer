@@ -5,6 +5,7 @@ const app = require("./app");
 const connectDB = require("./config/mongoConfig");
 const cron = require("node-cron");
 const { sendBirthdayReminders } = require("./controllers/admin/birthdayController");
+const { sendMembershipReminders } = require("./controllers/admin/membershipReminderController");
 
 // connecting 
 connectDB();
@@ -23,6 +24,21 @@ cron.schedule("0 9 * * *", async () => {
 });
 
 console.log("✅ Birthday reminder cron job scheduled (Daily at 9:00 AM IST)");
+
+// Schedule membership renewal reminders to run daily at 10:00 AM
+cron.schedule("0 10 * * *", async () => {
+  console.log("📧 Running scheduled membership renewal reminder check...");
+  try {
+    await sendMembershipReminders();
+  } catch (error) {
+    console.error("❌ Error in scheduled membership reminder:", error);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+console.log("✅ Membership renewal reminder cron job scheduled (Daily at 10:00 AM IST)");
 
 // a simple route to check if the server is running
 app.get("/", (req, res) => {
