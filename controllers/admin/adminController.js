@@ -1583,15 +1583,110 @@ exports.getCustomerMatchPreferencesDetail = async (req, res) => {
 
 exports.allActiveCustomer = async (req, res) => {
   try {
-    const customers = await Customer.find(
-      { activeStatus: true, isDeleted: false },
-      { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
-    );
+    // Get listIds from query parameters (can be comma-separated string or array)
+    let listIds = [];
+    if (req.query.listIds) {
+      if (Array.isArray(req.query.listIds)) {
+        listIds = req.query.listIds;
+      } else if (typeof req.query.listIds === 'string') {
+        listIds = req.query.listIds.split(',').filter(id => id.trim() !== '');
+      }
+    }
+
+    let customers = [];
+    let customerIds = new Set();
+
+    // If listIds are provided, filter by lists
+    if (listIds.length > 0) {
+      const hasNoList = listIds.includes('no-list');
+      const actualListIds = listIds.filter(id => id !== 'no-list');
+
+      // Get customers from selected lists
+      if (actualListIds.length > 0) {
+        // Convert listIds to ObjectIds
+        const listObjectIds = actualListIds
+          .filter(id => mongoose.Types.ObjectId.isValid(id))
+          .map(id => new mongoose.Types.ObjectId(id));
+
+        if (listObjectIds.length > 0) {
+          const clientLists = await ClientList.find({
+            _id: { $in: listObjectIds },
+            isDeleted: false
+          }).select('customers').lean();
+
+          // Collect all customer IDs from the selected lists
+          clientLists.forEach(list => {
+            if (list.customers && Array.isArray(list.customers)) {
+              list.customers.forEach(customerId => {
+                customerIds.add(customerId.toString());
+              });
+            }
+          });
+        }
+      }
+
+      // If "no-list" is selected, we need to find customers not in any list
+      if (hasNoList) {
+        // Get all customers that are in any list
+        const allListedCustomers = await ClientList.find({
+          isDeleted: false
+        }).select('customers').lean();
+
+        const allListedCustomerIds = new Set();
+        allListedCustomers.forEach(list => {
+          if (list.customers && Array.isArray(list.customers)) {
+            list.customers.forEach(customerId => {
+              allListedCustomerIds.add(customerId.toString());
+            });
+          }
+        });
+
+        // Get all active customers
+        const allActiveCustomers = await Customer.find(
+          { activeStatus: true, isDeleted: false },
+          { _id: 1 }
+        ).lean();
+
+        // Add customers that are not in any list
+        allActiveCustomers.forEach(customer => {
+          const customerIdStr = customer._id.toString();
+          if (!allListedCustomerIds.has(customerIdStr)) {
+            customerIds.add(customerIdStr);
+          }
+        });
+      }
+
+      // Fetch customers by IDs
+      if (customerIds.size > 0) {
+        // Convert customer IDs to ObjectIds
+        const customerObjectIds = Array.from(customerIds)
+          .filter(id => mongoose.Types.ObjectId.isValid(id))
+          .map(id => new mongoose.Types.ObjectId(id));
+
+        if (customerObjectIds.length > 0) {
+          customers = await Customer.find(
+            {
+              _id: { $in: customerObjectIds },
+              activeStatus: true,
+              isDeleted: false
+            },
+            { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
+          );
+        }
+      }
+    } else {
+      // No list filter, return all active customers
+      customers = await Customer.find(
+        { activeStatus: true, isDeleted: false },
+        { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
+      );
+    }
 
     if (!customers.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No active customers found"
+      return res.status(200).json({
+        success: true,
+        message: "No customers found matching the criteria",
+        data: []
       });
     }
 
