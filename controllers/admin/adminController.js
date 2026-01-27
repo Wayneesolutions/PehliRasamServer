@@ -33,6 +33,7 @@ const MailLog = require('../../models/customer/mail/mailLog');
 const sendEmail = require('../../utils/sendEmail');
 const ActivityLog = require("../../models/customer/activityLog");
 const Preset = require("../../models/customer/Presets/preset");
+const EmailSettings = require("../../models/admin/emailSettingsModel");
 const PresetFields = require('../../models/customer/Presets/presetFields');
 const Intro = require("../../models/customer/intro/intro");
 const IntroFields = require("../../models/customer/intro/introFields");
@@ -3153,6 +3154,7 @@ exports.getMatchGroupDetails = async (req, res) => {
             imagePath: customer.imagePath || null,
             address: customer.address || {},
             matchingDescription: val.matchingDescription || "",
+            notes: val.notes || "",
             createdAt: val.createdAt,
             createdBy: createdByAdmin ? {
               firstName: createdByAdmin.firstName || "Unknown",
@@ -3181,7 +3183,7 @@ exports.getMatchGroupDetails = async (req, res) => {
 
 exports.updateMatchGroupValue = async (req, res) => {
   try {
-    const { id, matchGroupId, customerId, matchCustomerId, matchingDescription } = req.body;
+    const { id, matchGroupId, customerId, matchCustomerId, matchingDescription, notes } = req.body;
     const editedBy = req.id;
 
     if (!id) {
@@ -3203,6 +3205,7 @@ exports.updateMatchGroupValue = async (req, res) => {
     if (customerId !== undefined) existing.customerId = customerId;
     if (matchCustomerId !== undefined) existing.matchCustomerId = matchCustomerId;
     if (matchingDescription !== undefined) existing.matchingDescription = matchingDescription;
+    if (notes !== undefined) existing.notes = notes;
     existing.editedBy = editedBy;
 
     const updated = await existing.save();
@@ -3703,8 +3706,11 @@ exports.sendMailForIntro = async (req, res) => {
     const { customerId, introLink, subject, body, extraEmails = [] } = req.body;
     const adminId = req.id;
     console.log('body', req.body)
-    if (!customerId || !subject || !body) {
-      return res.status(400).json({ message: 'customerId, subject, body, and introLink are required.' });
+    if (!customerId || !subject || !body || !introLink) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'customerId, subject, body, and introLink are required.' 
+      });
     }
 
     // Fetch customer
@@ -3716,6 +3722,10 @@ exports.sendMailForIntro = async (req, res) => {
     // Collect all recipients
     const recipients = [customer.email, ...extraEmails];
 
+    // Get reply-to from email settings
+    const emailSettings = await EmailSettings.getOrCreate();
+    const replyTo = emailSettings.replyToEmail || customer.email;
+
     // Send email to each recipient
     const sendResults = await Promise.all(
       recipients.map(email =>
@@ -3723,7 +3733,8 @@ exports.sendMailForIntro = async (req, res) => {
           to: email,
           subject,
           text: he.decode(body).replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
-          html: `${he.decode(body)}<br/><br/><a href="${introLink}"></a>`
+          html: `${he.decode(body)}<br/><br/><a href="${introLink}"></a>`,
+          replyTo: replyTo
         })
       )
     );
@@ -6620,6 +6631,134 @@ exports.updatePresetFieldOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error updating preset field order",
+      error: error.message
+    });
+  }
+};
+
+// Email Settings endpoints
+exports.getEmailSettings = async (req, res) => {
+  try {
+    const settings = await EmailSettings.getOrCreate();
+    
+    // Get default sender from env if using default method
+    const defaultSender = process.env.FROM_EMAIL || 'info@pehlirasam.com';
+    
+    res.status(200).json({
+      success: true,
+      message: "Email settings retrieved successfully",
+      data: {
+        ...settings.toObject(),
+        defaultSender: defaultSender
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching email settings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching email settings",
+      error: error.message
+    });
+  }
+};
+
+exports.updateEmailSettings = async (req, res) => {
+  try {
+    const { sendingMethod, smtpSettings, replyToEmail, inboundEmail, contactEmail } = req.body;
+    const updatedBy = req.id;
+
+    const settings = await EmailSettings.getOrCreate();
+
+    // Update fields
+    if (sendingMethod !== undefined) settings.sendingMethod = sendingMethod;
+    if (smtpSettings !== undefined) {
+      settings.smtpSettings = {
+        ...settings.smtpSettings,
+        ...smtpSettings
+      };
+    }
+    if (replyToEmail !== undefined) settings.replyToEmail = replyToEmail;
+    if (inboundEmail !== undefined) settings.inboundEmail = inboundEmail;
+    if (contactEmail !== undefined) settings.contactEmail = contactEmail;
+    
+    settings.updatedBy = updatedBy;
+    if (!settings.createdBy) {
+      settings.createdBy = updatedBy;
+    }
+
+    await settings.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Email settings updated successfully",
+      data: settings
+    });
+  } catch (error) {
+    console.error("Error updating email settings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating email settings",
+      error: error.message
+    });
+  }
+};
+
+exports.sendTestEmail = async (req, res) => {
+  try {
+    const { sendingMethod, smtpSettings, testEmail } = req.body;
+
+    if (!testEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Test email address is required"
+      });
+    }
+
+    let senderEmail;
+    if (sendingMethod === 'smtp' && smtpSettings?.sender) {
+      senderEmail = smtpSettings.sender;
+    } else {
+      // Use default from env
+      senderEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
+    }
+
+    // Get reply-to from settings
+    const settings = await EmailSettings.getOrCreate();
+    const replyTo = settings.replyToEmail || senderEmail;
+
+    const emailResult = await sendEmail({
+      to: testEmail,
+      subject: "Test Email from SmartMatchApp",
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Test Email</h2>
+          <p>This is a test email to verify your email settings.</p>
+          <p><strong>Sender:</strong> ${senderEmail}</p>
+          <p><strong>Reply-To:</strong> ${replyTo}</p>
+          <p>If you received this email, your email settings are configured correctly!</p>
+        </div>
+      `,
+      text: `Test Email\n\nThis is a test email to verify your email settings.\nSender: ${senderEmail}\nReply-To: ${replyTo}`,
+      replyTo: replyTo
+    });
+
+    if (emailResult.success) {
+      res.status(200).json({
+        success: true,
+        message: "Test email sent successfully"
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to send test email",
+        error: emailResult.error?.message || "Unknown error"
+      });
+    }
+  } catch (error) {
+    console.error("Error sending test email:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error sending test email",
       error: error.message
     });
   }

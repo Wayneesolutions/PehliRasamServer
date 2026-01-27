@@ -111,6 +111,9 @@ const {
   sendCustomerMail, //add log
   getMailLogs,
   getTodayStatsCount,
+  getEmailSettings,
+  updateEmailSettings,
+  sendTestEmail,
   getCustomerCountLastFiveDays,
   getActivityLogs,
   getMonthlyActivitySummary,
@@ -307,6 +310,11 @@ router.delete('/notes/:noteId', checkAdminToken, deleteNote)
 
 // Pin/Unpin customer route
 router.post('/togglePinCustomer', checkAdminToken, togglePinCustomer)
+
+// Email Settings routes
+router.get('/emailSettings', checkAdminToken, getEmailSettings)
+router.post('/emailSettings', checkAdminToken, updateEmailSettings)
+router.post('/sendTestEmail', checkAdminToken, sendTestEmail)
 
 // Update group and field order routes
 router.post('/updateGroupOrder', checkAdminToken, updateGroupOrder)

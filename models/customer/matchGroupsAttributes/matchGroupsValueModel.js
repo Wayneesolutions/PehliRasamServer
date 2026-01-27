@@ -18,6 +18,10 @@ const matchGroupValueSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
+  notes: {
+    type: String,
+    default: "",
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",

@@ -176,7 +176,7 @@ transporter.verify(function (error, success) {
     }
 });
 
-const sendEmail = async ({ to, subject, html = '', text = '', attachments = [] }) => {
+const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], replyTo = null }) => {
     console.log('to ====', to, 'subject ==== ', subject, 'html====  ', html, 'text === ', text, 'attachments === ', attachments);
     
     // Check if credentials are configured
@@ -195,7 +195,19 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [] }
     }
      const cleanSubject = subject.replace(/(<([^>]+)>)/gi, '').trim();
 
-    
+    // Get reply-to from email settings if not provided
+    let replyToEmail = replyTo;
+    if (!replyToEmail) {
+        try {
+            const EmailSettings = require('../models/admin/emailSettingsModel');
+            const settings = await EmailSettings.getOrCreate();
+            if (settings.replyToEmail) {
+                replyToEmail = settings.replyToEmail;
+            }
+        } catch (error) {
+            console.error('Error fetching email settings for reply-to:', error);
+        }
+    }
     
     const mailOptions = {
         from: `"Pehli Rasam" <${fromEmail}>`,
@@ -205,6 +217,12 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [] }
         html,
         attachments, // [{ filename, path, contentType }]
     };
+
+    // Add reply-to if available
+    if (replyToEmail) {
+        // Handle multiple emails (comma-separated)
+        mailOptions.replyTo = replyToEmail.split(',').map(email => email.trim()).join(', ');
+    }
 
     try {
         const info = await transporter.sendMail(mailOptions);
