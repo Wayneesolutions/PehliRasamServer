@@ -135,7 +135,16 @@ const {
   getNotes,
   updateNote,
   deleteNote,
-  togglePinCustomer
+  togglePinCustomer,
+  // Inbox endpoints
+  getInboxMessages,
+  getInboxMessage,
+  markMessageAsRead,
+  markMessageAsUnread,
+  deleteInboxMessage,
+  getUnreadCount,
+  getCustomerInbox,
+  toggleStarMessage
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -328,7 +337,15 @@ router.post('/updatePresetsOrder', checkAdminToken, updatePresetsOrder)
 router.post('/updatePresetFieldOrder', checkAdminToken, updatePresetFieldOrder)
 router.post('/updatePresetFieldsOrder', checkAdminToken, updatePresetFieldsOrder)
 
-
+// Inbox routes
+router.get('/inbox/messages', checkAdminToken, getInboxMessages)
+router.get('/inbox/message/:id', checkAdminToken, getInboxMessage)
+router.post('/inbox/message/:id/read', checkAdminToken, markMessageAsRead)
+router.post('/inbox/message/:id/unread', checkAdminToken, markMessageAsUnread)
+router.delete('/inbox/message/:id', checkAdminToken, deleteInboxMessage)
+router.get('/inbox/unread-count', checkAdminToken, getUnreadCount)
+router.get('/inbox/customer/:customerId', checkAdminToken, getCustomerInbox)
+router.post('/inbox/message/:id/star', checkAdminToken, toggleStarMessage)
 
 
 module.exports = router;

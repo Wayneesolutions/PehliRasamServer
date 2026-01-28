@@ -2,6 +2,8 @@ const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const sendEmail = require('./sendEmail');
 const EmailSettings = require('../models/admin/emailSettingsModel');
+const InboxMessage = require('../models/customer/mail/inboxMessage');
+const Customer = require('../models/customer/customerModel');
 
 // Store processed email UIDs to avoid duplicate processing
 const processedEmails = new Set();
@@ -101,11 +103,18 @@ const connectAndFetchEmails = (imapConfig) => {
                 let emailData = {
                   uid: newResults[seqno - 1],
                   from: '',
-                  to: '',
+                  fromName: '',
+                  to: [],
+                  cc: [],
                   subject: '',
                   text: '',
                   html: '',
-                  date: null
+                  date: null,
+                  messageId: null,
+                  inReplyTo: null,
+                  references: [],
+                  attachments: [],
+                  headers: {}
                 };
 
                 msg.on('body', (stream, info) => {
@@ -113,24 +122,54 @@ const connectAndFetchEmails = (imapConfig) => {
                     if (err) {
                       console.error(`   ⚠️  Error parsing email ${emailData.uid}:`, err.message);
                     } else if (parsed) {
-                      // Extract from email
+                      // Extract from email and name
                       if (parsed.from?.value && parsed.from.value.length > 0) {
                         emailData.from = parsed.from.value[0].address || parsed.from.text || '';
+                        emailData.fromName = parsed.from.value[0].name || '';
                       } else {
                         emailData.from = parsed.from?.text || '';
                       }
                       
                       // Extract to emails - handle multiple recipients
                       if (parsed.to?.value && Array.isArray(parsed.to.value)) {
-                        emailData.to = parsed.to.value.map(addr => addr.address).join(', ') || parsed.to.text || '';
-                      } else {
-                        emailData.to = parsed.to?.text || '';
+                        emailData.to = parsed.to.value.map(addr => addr.address);
+                      } else if (parsed.to?.text) {
+                        emailData.to = [parsed.to.text];
+                      }
+                      
+                      // Extract cc emails
+                      if (parsed.cc?.value && Array.isArray(parsed.cc.value)) {
+                        emailData.cc = parsed.cc.value.map(addr => addr.address);
                       }
                       
                       emailData.subject = parsed.subject || '';
                       emailData.text = parsed.text || '';
-                      emailData.html = parsed.html || '';
+                      emailData.html = parsed.html || parsed.textAsHtml || '';
                       emailData.date = parsed.date || new Date();
+                      
+                      // Extract email threading headers
+                      emailData.messageId = parsed.messageId || `${Date.now()}-${emailData.uid}@pehlirasam.com`;
+                      emailData.inReplyTo = parsed.inReplyTo || null;
+                      
+                      // Extract references for conversation threading
+                      if (parsed.references && Array.isArray(parsed.references)) {
+                        emailData.references = parsed.references;
+                      } else if (parsed.references) {
+                        emailData.references = [parsed.references];
+                      }
+                      
+                      // Extract attachments metadata
+                      if (parsed.attachments && Array.isArray(parsed.attachments)) {
+                        emailData.attachments = parsed.attachments.map(att => ({
+                          fileName: att.filename || 'untitled',
+                          fileSize: att.size || 0,
+                          mimeType: att.contentType || 'application/octet-stream',
+                          contentId: att.contentId || null
+                        }));
+                      }
+                      
+                      // Store important headers
+                      emailData.headers = parsed.headers ? parsed.headers.toJSON() : {};
                     }
                   });
                 });
@@ -184,19 +223,14 @@ const processIncomingEmails = async () => {
     // Get email settings
     const settings = await EmailSettings.getOrCreate();
 
-    // Check if auto-reply is enabled and inbound email is configured
-    console.log('📧 Checking auto-reply configuration...');
-    console.log(`   Auto-reply enabled: ${settings.autoReplyEnabled}`);
+    // Check if inbound email is configured
+    console.log('📧 Checking inbox tracking configuration...');
     console.log(`   Inbound email: ${settings.inboundEmail || '(not set)'}`);
-    
-    if (!settings.autoReplyEnabled) {
-      console.log('❌ Auto-reply is disabled. Please enable it in email settings.');
-      return { processed: 0, replied: 0 };
-    }
+    console.log(`   Auto-reply: Disabled (tracking only)`);
     
     if (!settings.inboundEmail) {
       console.log('❌ Inbound email not configured. Please set it in email settings.');
-      return { processed: 0, replied: 0 };
+      return { processed: 0, saved: 0 };
     }
 
     // Check if IMAP settings are configured
@@ -205,7 +239,7 @@ const processIncomingEmails = async () => {
     
     if (!settings.imapSettings || !settings.imapSettings.host || !settings.imapSettings.username || !settings.imapSettings.password) {
       console.log('❌ IMAP settings not configured. Please configure IMAP settings in email settings.');
-      return { processed: 0, replied: 0 };
+      return { processed: 0, saved: 0 };
     }
 
     // Configure IMAP connection
@@ -244,50 +278,93 @@ const processIncomingEmails = async () => {
         console.error('   3. Firewall allows outbound connections');
         console.error('   4. For Gmail: Use imap.gmail.com:993');
       }
-      return { processed: 0, replied: 0, error: error.message };
+      return { processed: 0, saved: 0, error: error.message };
     }
 
     if (emails.length === 0) {
       console.log('📧 No new emails found');
-      return { processed: 0, replied: 0 };
+      return { processed: 0, saved: 0 };
     }
 
     console.log(`📧 Found ${emails.length} new email(s)`);
 
     let repliedCount = 0;
+    let savedCount = 0;
 
     // Process each email
     for (const email of emails) {
       try {
         console.log(`\n📧 Processing email:`);
         console.log(`   From: ${email.from}`);
-        console.log(`   To: ${email.to}`);
+        console.log(`   To: ${email.to?.join(', ')}`);
+        console.log(`   CC: ${email.cc?.join(', ') || '(none)'}`);
         console.log(`   Subject: ${email.subject}`);
+        console.log(`   Message-ID: ${email.messageId}`);
         
-        // Check if email is sent to the inbound email address
-        // Handle cases where "to" might contain multiple emails, "me" alias, or be in different format
-        const emailTo = (email.to || '').toLowerCase();
+        // Check if email is sent to the inbound email address AND/OR reply-to emails
+        const emailToString = Array.isArray(email.to) ? email.to.join(',').toLowerCase() : (email.to || '').toLowerCase();
+        const emailCcString = Array.isArray(email.cc) ? email.cc.join(',').toLowerCase() : '';
+        const allRecipients = (emailToString + ',' + emailCcString).toLowerCase();
+        
         const inboundEmailLower = settings.inboundEmail.toLowerCase();
+        const replyToEmails = settings.replyToEmail ? settings.replyToEmail.split(',').map(e => e.trim().toLowerCase()) : [];
         const inboundEmailDomain = inboundEmailLower.split('@')[1];
         
-        // Check if email is sent to inbound address
-        // Also check if IMAP username matches (for "me" alias cases)
-        const isToInboundEmail = emailTo.includes(inboundEmailLower) || 
-                                 emailTo.includes(`<${inboundEmailLower}>`) ||
-                                 (settings.imapSettings.username && emailTo.includes(settings.imapSettings.username.toLowerCase()));
+        console.log(`   🔍 Checking recipients against:`);
+        console.log(`      Inbound email: ${settings.inboundEmail}`);
+        if (replyToEmails.length > 0) {
+          console.log(`      Reply-to emails: ${replyToEmails.join(', ')}`);
+        }
+        
+        // Check if email is sent to inbound address (check To and CC fields)
+        const isToInboundEmail = allRecipients.includes(inboundEmailLower) || 
+                                 allRecipients.includes(`<${inboundEmailLower}>`) ||
+                                 (settings.imapSettings.username && allRecipients.includes(settings.imapSettings.username.toLowerCase()));
+        
+        // Check if email is sent to any reply-to addresses (check To and CC fields)
+        const isToReplyToEmail = replyToEmails.length > 0 && replyToEmails.some(replyEmail => 
+          allRecipients.includes(replyEmail) || allRecipients.includes(`<${replyEmail}>`)
+        );
         
         // Also check if it's sent to the domain (for catch-all or aliases)
-        const isToDomain = inboundEmailDomain && emailTo.includes(`@${inboundEmailDomain}`);
+        const isToDomain = inboundEmailDomain && allRecipients.includes(`@${inboundEmailDomain}`);
 
-        if (!isToInboundEmail && !isToDomain) {
-          console.log(`   ⚠️  Email not sent to inbound address (${settings.inboundEmail}), skipping`);
-          console.log(`   Email 'to' field: ${emailTo}`);
+        // Log which conditions matched
+        if (isToInboundEmail) {
+          console.log(`   ✅ Matched: Inbound email (${settings.inboundEmail})`);
+        }
+        if (isToReplyToEmail) {
+          const matchedEmails = replyToEmails.filter(email => allRecipients.includes(email));
+          console.log(`   ✅ Matched: Reply-to email (${matchedEmails.join(', ')})`);
+        }
+        if (isToDomain) {
+          console.log(`   ✅ Matched: Domain (@${inboundEmailDomain})`);
+        }
+
+        // Accept email if it's sent to ANY of: inbound email OR reply-to emails OR domain
+        // BUT only SAVE to inbox if sent to INBOUND email specifically
+        if (!isToInboundEmail && !isToReplyToEmail && !isToDomain) {
+          console.log(`   ❌ Email NOT sent to any monitored address, skipping`);
+          console.log(`   Email recipients: ${emailToString}`);
+          console.log(`   Expected one of:`);
+          console.log(`      - Inbound: ${settings.inboundEmail}`);
+          if (replyToEmails.length > 0) {
+            console.log(`      - Reply-to: ${replyToEmails.join(', ')}`);
+          }
+          console.log(`      - Domain: @${inboundEmailDomain}`);
           // Mark as processed anyway to avoid reprocessing
           processedEmails.add(email.uid);
           continue;
         }
         
-        console.log(`   ✅ Email matches inbound address criteria`);
+        // Only save to inbox if sent to INBOUND email (not reply-to emails)
+        const shouldSaveToInbox = isToInboundEmail;
+        
+        if (shouldSaveToInbox) {
+          console.log(`   ✅ Email sent to INBOUND address - will be saved to inbox`);
+        } else {
+          console.log(`   ℹ️  Email sent to reply-to/domain only - will NOT be saved to inbox (only for auto-reply)`);
+        }
 
         // Extract sender email
         const senderEmail = email.from.match(/[\w\.-]+@[\w\.-]+\.\w+/)?.[0] || email.from;
@@ -298,25 +375,66 @@ const processIncomingEmails = async () => {
           continue;
         }
 
-        // Send auto-reply
-        const autoReplyMessage = settings.autoReplyMessage || 
-          'Thank you for contacting us. We have received your email and our team will contact you soon.';
+        // Only save to inbox if email is sent to INBOUND email address
+        if (shouldSaveToInbox) {
+          // Check if email already exists in database (avoid duplicates)
+          const existingEmail = await InboxMessage.findOne({ messageId: email.messageId });
+          if (existingEmail) {
+            console.log(`   ⚠️  Email already exists in database (Message-ID: ${email.messageId}), skipping`);
+            processedEmails.add(email.uid);
+            continue;
+          }
 
-        const replySubject = `Re: ${email.subject}`;
+          // Try to match sender with existing customer
+          let matchedCustomer = null;
+          try {
+            matchedCustomer = await Customer.findOne({ 
+              email: { $regex: new RegExp(`^${senderEmail}$`, 'i') },
+              isDeleted: false 
+            });
+            if (matchedCustomer) {
+              console.log(`   ✅ Matched customer: ${matchedCustomer.firstName} ${matchedCustomer.lastName} (ID: ${matchedCustomer._id})`);
+            } else {
+              console.log(`   ℹ️  No matching customer found for: ${senderEmail}`);
+            }
+          } catch (matchError) {
+            console.error(`   ⚠️  Error matching customer:`, matchError.message);
+          }
 
-        const emailResult = await sendEmail({
-          to: senderEmail,
-          subject: replySubject,
-          text: autoReplyMessage,
-          html: `<p>${autoReplyMessage.replace(/\n/g, '<br>')}</p>`,
-          replyTo: settings.inboundEmail
-        });
+          // Save email to inbox (auto-reply removed - only tracking)
+          try {
+            const inboxMessage = new InboxMessage({
+              messageId: email.messageId,
+              from: senderEmail,
+              fromName: email.fromName || '',
+              to: email.to || [],
+              cc: email.cc || [],
+              subject: email.subject || '(No Subject)',
+              body: email.html || email.text || '',
+              textBody: email.text || '',
+              receivedAt: new Date(),
+              emailDate: email.date || new Date(),
+              customerId: matchedCustomer ? matchedCustomer._id : null,
+              customerMatched: !!matchedCustomer,
+              inReplyTo: email.inReplyTo,
+              references: email.references || [],
+              isRead: false,
+              hasAutoReplied: false,
+              attachments: email.attachments || [],
+              rawHeaders: email.headers || {}
+            });
 
-        if (emailResult.success) {
-          console.log(`✅ Auto-reply sent to: ${senderEmail}`);
-          repliedCount++;
+            await inboxMessage.save();
+            console.log(`   ✅ Email saved to inbox (ID: ${inboxMessage._id})`);
+            console.log(`   ℹ️  Auto-reply disabled for inbound messages - only tracking`);
+            savedCount++;
+
+          } catch (saveError) {
+            console.error(`   ❌ Error saving email to inbox:`, saveError.message);
+          }
         } else {
-          console.error(`❌ Failed to send auto-reply to ${senderEmail}:`, emailResult.error?.message);
+          // Email sent to reply-to address only - DON'T save to inbox and NO auto-reply
+          console.log(`   📧 Email sent to reply-to address - not saving to inbox (auto-reply disabled)`);
         }
 
         // Mark email as processed
@@ -331,14 +449,18 @@ const processIncomingEmails = async () => {
 
       } catch (error) {
         console.error(`❌ Error processing email from ${email.from}:`, error.message);
+        console.error(error.stack);
         // Mark as processed to avoid infinite retry
         processedEmails.add(email.uid);
       }
     }
 
-    console.log(`📧 Processed ${emails.length} email(s), sent ${repliedCount} auto-reply(ies)`);
+    console.log(`\n📧 Summary:`);
+    console.log(`   Processed: ${emails.length} email(s)`);
+    console.log(`   Saved to inbox: ${savedCount} email(s)`);
+    console.log(`   Auto-reply: Disabled (tracking only)`);
 
-    return { processed: emails.length, replied: repliedCount };
+    return { processed: emails.length, saved: savedCount, replied: 0 };
 
   } catch (error) {
     console.error('❌ Error in processIncomingEmails:', error.message);

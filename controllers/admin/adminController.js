@@ -38,6 +38,7 @@ const PresetFields = require('../../models/customer/Presets/presetFields');
 const Intro = require("../../models/customer/intro/intro");
 const IntroFields = require("../../models/customer/intro/introFields");
 const he = require('he');
+const InboxMessage = require('../../models/customer/mail/inboxMessage');
 
 
 
@@ -3645,6 +3646,25 @@ exports.sendCustomerMail = async (req, res) => {
       return res.status(404).json({ message: 'Customer not found or missing email.' });
     }
 
+    // Get reply-to from email settings - combine reply-to AND inbound emails
+    const emailSettings = await EmailSettings.getOrCreate();
+    
+    // Collect all reply-to addresses (both replyToEmail and inboundEmail)
+    const replyToAddresses = [];
+    if (emailSettings.replyToEmail) {
+      replyToAddresses.push(...emailSettings.replyToEmail.split(',').map(e => e.trim()).filter(e => e));
+    }
+    if (emailSettings.inboundEmail && !replyToAddresses.includes(emailSettings.inboundEmail)) {
+      replyToAddresses.push(emailSettings.inboundEmail);
+    }
+    
+    const replyTo = replyToAddresses.length > 0 ? replyToAddresses.join(', ') : null;
+    
+    console.log('📧 Customer Email Settings:');
+    console.log('   Reply-To emails:', emailSettings.replyToEmail || '(not set)');
+    console.log('   Inbound Email:', emailSettings.inboundEmail || '(not set)');
+    console.log('   Combined Reply-To:', replyTo || '(not set)');
+
     const htmlContent = `
         <html>
           <body>
@@ -3658,6 +3678,7 @@ exports.sendCustomerMail = async (req, res) => {
       subject,
       html: htmlContent,
       attachments,
+      replyTo: replyTo
     });
 
     const mailLog = new MailLog({
@@ -3722,9 +3743,24 @@ exports.sendMailForIntro = async (req, res) => {
     // Collect all recipients
     const recipients = [customer.email, ...extraEmails];
 
-    // Get reply-to from email settings
+    // Get reply-to from email settings - combine reply-to AND inbound emails
     const emailSettings = await EmailSettings.getOrCreate();
-    const replyTo = emailSettings.replyToEmail || customer.email;
+    
+    // Collect all reply-to addresses (both replyToEmail and inboundEmail)
+    const replyToAddresses = [];
+    if (emailSettings.replyToEmail) {
+      replyToAddresses.push(...emailSettings.replyToEmail.split(',').map(e => e.trim()).filter(e => e));
+    }
+    if (emailSettings.inboundEmail && !replyToAddresses.includes(emailSettings.inboundEmail)) {
+      replyToAddresses.push(emailSettings.inboundEmail);
+    }
+    // Fallback to customer email if nothing is set
+    const replyTo = replyToAddresses.length > 0 ? replyToAddresses.join(', ') : customer.email;
+    
+    console.log('📧 Intro Email Settings:');
+    console.log('   Reply-To emails:', emailSettings.replyToEmail || '(not set)');
+    console.log('   Inbound Email:', emailSettings.inboundEmail || '(not set)');
+    console.log('   Combined Reply-To:', replyTo);
 
     // Send email to each recipient
     const sendResults = await Promise.all(
@@ -6870,6 +6906,361 @@ exports.sendTestEmail = async (req, res) => {
       success: false,
       message: "Error sending test email",
       error: error.message
+    });
+  }
+};
+
+// ============================================
+// INBOX MANAGEMENT ENDPOINTS
+// ============================================
+
+/**
+ * Get all inbox messages with filters and pagination
+ */
+exports.getInboxMessages = async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 20, 
+      isRead, 
+      customerId, 
+      search,
+      startDate,
+      endDate 
+    } = req.query;
+
+    // Build filter query
+    const filter = { isDeleted: false };
+
+    if (isRead !== undefined) {
+      filter.isRead = isRead === 'true';
+    }
+
+    if (customerId) {
+      filter.customerId = customerId;
+    }
+
+    if (search) {
+      filter.$or = [
+        { subject: { $regex: search, $options: 'i' } },
+        { from: { $regex: search, $options: 'i' } },
+        { fromName: { $regex: search, $options: 'i' } },
+        { textBody: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (startDate || endDate) {
+      filter.receivedAt = {};
+      if (startDate) filter.receivedAt.$gte = new Date(startDate);
+      if (endDate) filter.receivedAt.$lte = new Date(endDate);
+    }
+
+    // Count total documents
+    const total = await InboxMessage.countDocuments(filter);
+
+    // Get paginated messages
+    const messages = await InboxMessage.find(filter)
+      .populate('customerId', 'firstName lastName email profileImage')
+      .populate('readBy', 'firstName lastName')
+      .sort({ receivedAt: -1 })
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .lean();
+
+    // Get unread count
+    const unreadCount = await InboxMessage.countDocuments({ 
+      isDeleted: false, 
+      isRead: false 
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Inbox messages fetched successfully',
+      data: {
+        messages,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(total / parseInt(limit))
+        },
+        unreadCount
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Inbox Messages Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Get single inbox message by ID
+ */
+exports.getInboxMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message ID is required'
+      });
+    }
+
+    const message = await InboxMessage.findById(id)
+      .populate('customerId', 'firstName lastName email profileImage phone')
+      .populate('readBy', 'firstName lastName email')
+      .populate('deletedBy', 'firstName lastName')
+      .lean();
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Message fetched successfully',
+      data: message
+    });
+
+  } catch (error) {
+    console.error('Get Inbox Message Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Mark message as read
+ */
+exports.markMessageAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message ID is required'
+      });
+    }
+
+    const message = await InboxMessage.findById(id);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+
+    await message.markAsRead(adminId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Message marked as read',
+      data: message
+    });
+
+  } catch (error) {
+    console.error('Mark Message As Read Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Mark message as unread
+ */
+exports.markMessageAsUnread = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message ID is required'
+      });
+    }
+
+    const message = await InboxMessage.findById(id);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+
+    await message.markAsUnread();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Message marked as unread',
+      data: message
+    });
+
+  } catch (error) {
+    console.error('Mark Message As Unread Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Delete inbox message (soft delete)
+ */
+exports.deleteInboxMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message ID is required'
+      });
+    }
+
+    const message = await InboxMessage.findById(id);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+
+    message.isDeleted = true;
+    message.deletedAt = new Date();
+    message.deletedBy = adminId;
+    await message.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Message deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete Inbox Message Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Get unread count
+ */
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const unreadCount = await InboxMessage.getUnreadCount();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Unread count fetched successfully',
+      data: { unreadCount }
+    });
+
+  } catch (error) {
+    console.error('Get Unread Count Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Get inbox messages for a specific customer
+ */
+exports.getCustomerInbox = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer ID is required'
+      });
+    }
+
+    const messages = await InboxMessage.findByCustomer(customerId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Customer inbox fetched successfully',
+      data: messages
+    });
+
+  } catch (error) {
+    console.error('Get Customer Inbox Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Toggle star status
+ */
+exports.toggleStarMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message ID is required'
+      });
+    }
+
+    const message = await InboxMessage.findById(id);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+
+    message.isStarred = !message.isStarred;
+    await message.save();
+
+    return res.status(200).json({
+      success: true,
+      message: message.isStarred ? 'Message starred' : 'Message unstarred',
+      data: message
+    });
+
+  } catch (error) {
+    console.error('Toggle Star Message Error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: error.message 
     });
   }
 };

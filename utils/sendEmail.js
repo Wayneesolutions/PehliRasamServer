@@ -294,12 +294,30 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], 
     // Add reply-to if available
     if (replyToEmail) {
         // Handle multiple emails (comma-separated)
-        mailOptions.replyTo = replyToEmail.split(',').map(email => email.trim()).join(', ');
+        // Split by comma, trim whitespace, and format properly for email clients
+        const replyToAddresses = replyToEmail.split(',').map(email => email.trim()).filter(email => email.length > 0);
+        
+        if (replyToAddresses.length > 0) {
+            // Use comma-separated format for multiple addresses
+            mailOptions.replyTo = replyToAddresses.join(', ');
+            console.log(`   Reply-To addresses (${replyToAddresses.length}): ${mailOptions.replyTo}`);
+        }
     }
 
     try {
+        // Log email details before sending
+        console.log('📧 Sending email with options:');
+        console.log('   To:', to);
+        console.log('   Subject:', cleanSubject);
+        console.log('   From:', mailOptions.from);
+        if (mailOptions.replyTo) {
+            console.log('   Reply-To:', mailOptions.replyTo);
+        } else {
+            console.log('   Reply-To: (not set)');
+        }
+        
         const info = await emailTransporter.sendMail(mailOptions);
-        console.log('✅ Email sent:', cleanSubject, '→', to);
+        console.log('✅ Email sent successfully');
         return { success: true, response: info };
     } catch (error) {
         console.error('❌ Nodemailer Error:', error.message);
