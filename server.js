@@ -6,6 +6,7 @@ const connectDB = require("./config/mongoConfig");
 const cron = require("node-cron");
 const { sendBirthdayReminders } = require("./controllers/admin/birthdayController");
 const { sendMembershipReminders } = require("./controllers/admin/membershipReminderController");
+const { processIncomingEmails } = require("./utils/emailReceiver");
 
 // connecting 
 connectDB();
@@ -39,6 +40,21 @@ cron.schedule("0 10 * * *", async () => {
 });
 
 console.log("✅ Membership renewal reminder cron job scheduled (Daily at 10:00 AM IST)");
+
+// Schedule email auto-reply check to run every 5 minutes
+cron.schedule("*/5 * * * *", async () => {
+  console.log("📧 Running scheduled email auto-reply check...");
+  try {
+    await processIncomingEmails();
+  } catch (error) {
+    console.error("❌ Error in scheduled email auto-reply check:", error);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+console.log("✅ Email auto-reply cron job scheduled (Every 5 minutes)");
 
 // a simple route to check if the server is running
 app.get("/", (req, res) => {

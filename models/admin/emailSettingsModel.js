@@ -22,6 +22,21 @@ const emailSettingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  imapSettings: {
+    host: { type: String, default: '' },
+    port: { type: String, default: '993' },
+    username: { type: String, default: '' },
+    password: { type: String, default: '' },
+    secure: { type: Boolean, default: true }
+  },
+  autoReplyEnabled: {
+    type: Boolean,
+    default: false
+  },
+  autoReplyMessage: {
+    type: String,
+    default: 'Thank you for contacting us. We have received your email and our team will contact you soon.'
+  },
   contactEmail: {
     type: String,
     default: ''

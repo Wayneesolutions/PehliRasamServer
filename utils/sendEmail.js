@@ -177,15 +177,7 @@ transporter.verify(function (error, success) {
 });
 
 const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], replyTo = null }) => {
-    console.log('to ====', to, 'subject ==== ', subject, 'html====  ', html, 'text === ', text, 'attachments === ', attachments);
-    
-    // Check if credentials are configured
-    if (!smtpUsername || !smtpPassword) {
-        return {
-            success: false,
-            error: new Error('SMTP credentials not configured. Please set SMTP_USERNAME and SMTP_PASSWORD in your .env file.')
-        };
-    }
+    console.log('to ====', to, 'subject ==== ', subject);
     
     if (!to || !subject || (!text && !html)) {
         return {
@@ -193,26 +185,107 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], 
             error: new Error('Missing required email fields: "to", "subject", and at least one of "text" or "html".')
         };
     }
-     const cleanSubject = subject.replace(/(<([^>]+)>)/gi, '').trim();
+    
+    const cleanSubject = subject.replace(/(<([^>]+)>)/gi, '').trim();
 
-    // Get reply-to from email settings if not provided
+    // Get email settings from database
+    let emailSettings = null;
     let replyToEmail = replyTo;
-    if (!replyToEmail) {
-        try {
-            const EmailSettings = require('../models/admin/emailSettingsModel');
-            const settings = await EmailSettings.getOrCreate();
-            if (settings.replyToEmail) {
-                replyToEmail = settings.replyToEmail;
+    let senderEmail = fromEmail;
+    let emailTransporter = transporter; // Default to env-based transporter
+    
+    try {
+        const EmailSettings = require('../models/admin/emailSettingsModel');
+        emailSettings = await EmailSettings.getOrCreate();
+        
+        // Get reply-to if not provided
+        if (!replyToEmail && emailSettings.replyToEmail) {
+            replyToEmail = emailSettings.replyToEmail;
+        }
+        
+        // Check if SMTP settings are configured in database
+        if (emailSettings.sendingMethod === 'smtp' && 
+            emailSettings.smtpSettings && 
+            emailSettings.smtpSettings.host && 
+            emailSettings.smtpSettings.username && 
+            emailSettings.smtpSettings.password) {
+            
+            console.log('📧 Using SMTP settings from database');
+            
+            // Use database SMTP settings
+            const dbSmtpPort = parseInt(emailSettings.smtpSettings.port) || 587;
+            let dbSmtpSecure = false;
+            
+            if (dbSmtpPort === 465) {
+                dbSmtpSecure = true;
+            } else if (dbSmtpPort === 587) {
+                dbSmtpSecure = false;
+            } else {
+                dbSmtpSecure = emailSettings.smtpSettings.connectionType === 'true' || 
+                               emailSettings.smtpSettings.connectionType === 'ssl';
             }
-        } catch (error) {
-            console.error('Error fetching email settings for reply-to:', error);
+            
+            const dbTransporterConfig = {
+                host: emailSettings.smtpSettings.host,
+                port: dbSmtpPort,
+                secure: dbSmtpSecure,
+                auth: {
+                    user: emailSettings.smtpSettings.username,
+                    pass: emailSettings.smtpSettings.password.trim()
+                },
+                tls: {
+                    rejectUnauthorized: false
+                },
+                connectionTimeout: 15000,
+                greetingTimeout: 10000,
+                socketTimeout: 15000
+            };
+            
+            // Port-specific configuration
+            if (dbSmtpPort === 587) {
+                dbTransporterConfig.secure = false;
+                dbTransporterConfig.requireTLS = true;
+            } else if (dbSmtpPort === 465) {
+                dbTransporterConfig.secure = true;
+                dbTransporterConfig.requireTLS = false;
+            }
+            
+            // Create transporter with database settings
+            emailTransporter = nodemailer.createTransport(dbTransporterConfig);
+            
+            // Use sender from database settings
+            senderEmail = emailSettings.smtpSettings.sender || emailSettings.smtpSettings.username || fromEmail;
+            
+            console.log(`   Using SMTP: ${emailSettings.smtpSettings.host}:${dbSmtpPort}`);
+            console.log(`   Sender: ${senderEmail}`);
+        } else {
+            console.log('📧 Using default SMTP settings from environment');
+            
+            // Check if default credentials are configured
+            if (!smtpUsername || !smtpPassword) {
+                return {
+                    success: false,
+                    error: new Error('SMTP credentials not configured. Please configure SMTP settings in Email Settings or set SMTP_USERNAME and SMTP_PASSWORD in your .env file.')
+                };
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching email settings:', error);
+        // Fall back to env-based transporter
+        console.log('⚠️  Falling back to default SMTP settings from environment');
+        
+        if (!smtpUsername || !smtpPassword) {
+            return {
+                success: false,
+                error: new Error('SMTP credentials not configured. Please set SMTP_USERNAME and SMTP_PASSWORD in your .env file.')
+            };
         }
     }
     
     const mailOptions = {
-        from: `"Pehli Rasam" <${fromEmail}>`,
+        from: `"Pehli Rasam" <${senderEmail}>`,
         to,
-        subject:cleanSubject,
+        subject: cleanSubject,
         text,
         html,
         attachments, // [{ filename, path, contentType }]
@@ -225,11 +298,11 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], 
     }
 
     try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log('Email sent:', subject, '→', to);
+        const info = await emailTransporter.sendMail(mailOptions);
+        console.log('✅ Email sent:', cleanSubject, '→', to);
         return { success: true, response: info };
     } catch (error) {
-        console.error('Nodemailer Error:', error);
+        console.error('❌ Nodemailer Error:', error.message);
         return { success: false, error };
     }
 };

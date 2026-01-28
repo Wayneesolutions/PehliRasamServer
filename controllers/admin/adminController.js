@@ -6664,7 +6664,7 @@ exports.getEmailSettings = async (req, res) => {
 
 exports.updateEmailSettings = async (req, res) => {
   try {
-    const { sendingMethod, smtpSettings, replyToEmail, inboundEmail, contactEmail } = req.body;
+    const { sendingMethod, smtpSettings, replyToEmail, inboundEmail, contactEmail, imapSettings, autoReplyEnabled, autoReplyMessage } = req.body;
     const updatedBy = req.id;
 
     const settings = await EmailSettings.getOrCreate();
@@ -6680,6 +6680,14 @@ exports.updateEmailSettings = async (req, res) => {
     if (replyToEmail !== undefined) settings.replyToEmail = replyToEmail;
     if (inboundEmail !== undefined) settings.inboundEmail = inboundEmail;
     if (contactEmail !== undefined) settings.contactEmail = contactEmail;
+    if (imapSettings !== undefined) {
+      settings.imapSettings = {
+        ...settings.imapSettings,
+        ...imapSettings
+      };
+    }
+    if (autoReplyEnabled !== undefined) settings.autoReplyEnabled = autoReplyEnabled;
+    if (autoReplyMessage !== undefined) settings.autoReplyMessage = autoReplyMessage;
     
     settings.updatedBy = updatedBy;
     if (!settings.createdBy) {
@@ -6706,6 +6714,7 @@ exports.updateEmailSettings = async (req, res) => {
 exports.sendTestEmail = async (req, res) => {
   try {
     const { sendingMethod, smtpSettings, testEmail } = req.body;
+    const nodemailer = require('nodemailer');
 
     if (!testEmail) {
       return res.status(400).json({
@@ -6715,32 +6724,132 @@ exports.sendTestEmail = async (req, res) => {
     }
 
     let senderEmail;
-    if (sendingMethod === 'smtp' && smtpSettings?.sender) {
-      senderEmail = smtpSettings.sender;
+    let transporter;
+    let emailResult;
+
+    if (sendingMethod === 'smtp' && smtpSettings) {
+      // Use SMTP settings from form
+      if (!smtpSettings.host || !smtpSettings.port || !smtpSettings.username || !smtpSettings.password) {
+        return res.status(400).json({
+          success: false,
+          message: "SMTP settings incomplete. Please fill in host, port, username, and password."
+        });
+      }
+
+      // Determine sender email - use sender field if provided, otherwise use username
+      senderEmail = smtpSettings.sender || smtpSettings.username;
+      
+      if (!senderEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "SMTP sender email is required. Please set it in the 'Sender' field."
+        });
+      }
+      
+      // Create transporter with provided SMTP settings
+      const smtpPort = parseInt(smtpSettings.port) || 587;
+      
+      // Determine secure connection based on port and connectionType
+      let smtpSecure = false;
+      if (smtpPort === 465) {
+        smtpSecure = true; // Port 465 always uses SSL
+      } else if (smtpPort === 587) {
+        smtpSecure = false; // Port 587 uses STARTTLS
+      } else {
+        // For other ports, check connectionType
+        smtpSecure = smtpSettings.connectionType === 'true' || 
+                     smtpSettings.connectionType === 'ssl' || 
+                     smtpSettings.connectionType === 'tls';
+      }
+      
+      const transporterConfig = {
+        host: smtpSettings.host,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: {
+          user: smtpSettings.username,
+          pass: smtpSettings.password.trim()
+        },
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
+      };
+
+      // Port-specific configuration
+      if (smtpPort === 587) {
+        transporterConfig.secure = false;
+        transporterConfig.requireTLS = true;
+      } else if (smtpPort === 465) {
+        transporterConfig.secure = true;
+        transporterConfig.requireTLS = false;
+      }
+      
+      console.log(`📧 Test Email - Using SMTP Settings:`);
+      console.log(`   Host: ${smtpSettings.host}`);
+      console.log(`   Port: ${smtpPort}`);
+      console.log(`   Secure: ${smtpSecure}`);
+      console.log(`   Username: ${smtpSettings.username}`);
+      console.log(`   Sender: ${senderEmail}`);
+
+      transporter = nodemailer.createTransport(transporterConfig);
+
+      // Get reply-to from settings
+      const settings = await EmailSettings.getOrCreate();
+      const replyTo = settings.replyToEmail || senderEmail;
+
+      const mailOptions = {
+        from: `"Pehli Rasam" <${senderEmail}>`,
+        to: testEmail,
+        subject: "Test Email from Pehli Rasam",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Test Email</h2>
+            <p>This is a test email to verify your email settings.</p>
+            <p><strong>Sender:</strong> ${senderEmail}</p>
+            <p><strong>Reply-To:</strong> ${replyTo}</p>
+            <p>If you received this email, your email settings are configured correctly!</p>
+          </div>
+        `,
+        text: `Test Email\n\nThis is a test email to verify your email settings.\nSender: ${senderEmail}\nReply-To: ${replyTo}`,
+        replyTo: replyTo
+      };
+
+      try {
+        const info = await transporter.sendMail(mailOptions);
+        emailResult = { success: true, response: info };
+      } catch (error) {
+        console.error('SMTP Test Email Error:', error);
+        emailResult = { success: false, error };
+      }
+
     } else {
       // Use default from env
       senderEmail = process.env.FROM_EMAIL || 'info@pehlirasam.com';
+      
+      // Get reply-to from settings
+      const settings = await EmailSettings.getOrCreate();
+      const replyTo = settings.replyToEmail || senderEmail;
+
+      // Use the default sendEmail function
+      emailResult = await sendEmail({
+        to: testEmail,
+        subject: "Test Email from Pehli Rasam",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Test Email</h2>
+            <p>This is a test email to verify your email settings.</p>
+            <p><strong>Sender:</strong> ${senderEmail}</p>
+            <p><strong>Reply-To:</strong> ${replyTo}</p>
+            <p>If you received this email, your email settings are configured correctly!</p>
+          </div>
+        `,
+        text: `Test Email\n\nThis is a test email to verify your email settings.\nSender: ${senderEmail}\nReply-To: ${replyTo}`,
+        replyTo: replyTo
+      });
     }
-
-    // Get reply-to from settings
-    const settings = await EmailSettings.getOrCreate();
-    const replyTo = settings.replyToEmail || senderEmail;
-
-    const emailResult = await sendEmail({
-      to: testEmail,
-      subject: "Test Email from SmartMatchApp",
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h2>Test Email</h2>
-          <p>This is a test email to verify your email settings.</p>
-          <p><strong>Sender:</strong> ${senderEmail}</p>
-          <p><strong>Reply-To:</strong> ${replyTo}</p>
-          <p>If you received this email, your email settings are configured correctly!</p>
-        </div>
-      `,
-      text: `Test Email\n\nThis is a test email to verify your email settings.\nSender: ${senderEmail}\nReply-To: ${replyTo}`,
-      replyTo: replyTo
-    });
 
     if (emailResult.success) {
       res.status(200).json({
@@ -6748,10 +6857,11 @@ exports.sendTestEmail = async (req, res) => {
         message: "Test email sent successfully"
       });
     } else {
+      const errorMessage = emailResult.error?.message || emailResult.error?.response || "Unknown error";
       res.status(500).json({
         success: false,
         message: "Failed to send test email",
-        error: emailResult.error?.message || "Unknown error"
+        error: errorMessage
       });
     }
   } catch (error) {
