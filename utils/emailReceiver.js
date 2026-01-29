@@ -4,6 +4,7 @@ const sendEmail = require('./sendEmail');
 const EmailSettings = require('../models/admin/emailSettingsModel');
 const InboxMessage = require('../models/customer/mail/inboxMessage');
 const Customer = require('../models/customer/customerModel');
+const MailLog = require('../models/customer/mail/mailLog');
 
 // Store processed email UIDs to avoid duplicate processing
 const processedEmails = new Set();
@@ -33,16 +34,24 @@ const connectAndFetchEmails = (imapConfig) => {
         }
         console.log(`   ✅ Opened INBOX (${box.messages.total} total messages)`);
 
-        // Search for unseen emails, but limit to most recent ones to avoid processing thousands
-        // First, get the most recent unseen emails (limit to last 50)
-        imap.search(['UNSEEN'], (err, results) => {
+        // Search for emails from the last 24 hours (both read and unread)
+        // This ensures we catch customer replies even if they've been opened in Gmail
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        // Format date for IMAP (e.g., "January 29, 2026")
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'];
+        const formattedDate = `${monthNames[yesterday.getMonth()]} ${yesterday.getDate()}, ${yesterday.getFullYear()}`;
+        
+        imap.search([['SINCE', formattedDate]], (err, results) => {
           if (err) {
             console.error('   ❌ Error searching for emails:', err.message);
             imap.end();
             return reject(err);
           }
 
-          console.log(`   📬 Found ${results?.length || 0} unseen email(s)`);
+          console.log(`   📬 Found ${results?.length || 0} email(s) from last 24 hours`);
 
           let emailsToProcess = results || [];
           
@@ -55,25 +64,7 @@ const connectAndFetchEmails = (imapConfig) => {
             emailsToProcess = emailsToProcess.slice(-MAX_EMAILS_PER_RUN);
           }
           
-          // If no unseen emails, check recent emails from last 24 hours
-          if (emailsToProcess.length === 0) {
-            console.log('   📬 No unseen emails, checking recent emails from last 24 hours...');
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            imap.search(['SINCE', yesterday], (err2, recentResults) => {
-              if (!err2 && recentResults && recentResults.length > 0) {
-                console.log(`   📬 Found ${recentResults.length} recent email(s) from last 24 hours`);
-                // Limit to most recent 50
-                emailsToProcess = recentResults.slice(-MAX_EMAILS_PER_RUN);
-                if (recentResults.length > MAX_EMAILS_PER_RUN) {
-                  console.log(`   ⚠️  Processing only the most recent ${MAX_EMAILS_PER_RUN}...`);
-                }
-              }
-              processEmails();
-            });
-          } else {
-            processEmails();
-          }
+          processEmails();
 
           function processEmails() {
             if (!emailsToProcess || emailsToProcess.length === 0) {
@@ -117,65 +108,77 @@ const connectAndFetchEmails = (imapConfig) => {
                   headers: {}
                 };
 
+                let parsedData = null;
+
                 msg.on('body', (stream, info) => {
                   simpleParser(stream, (err, parsed) => {
                     if (err) {
                       console.error(`   ⚠️  Error parsing email ${emailData.uid}:`, err.message);
                     } else if (parsed) {
-                      // Extract from email and name
-                      if (parsed.from?.value && parsed.from.value.length > 0) {
-                        emailData.from = parsed.from.value[0].address || parsed.from.text || '';
-                        emailData.fromName = parsed.from.value[0].name || '';
-                      } else {
-                        emailData.from = parsed.from?.text || '';
-                      }
-                      
-                      // Extract to emails - handle multiple recipients
-                      if (parsed.to?.value && Array.isArray(parsed.to.value)) {
-                        emailData.to = parsed.to.value.map(addr => addr.address);
-                      } else if (parsed.to?.text) {
-                        emailData.to = [parsed.to.text];
-                      }
-                      
-                      // Extract cc emails
-                      if (parsed.cc?.value && Array.isArray(parsed.cc.value)) {
-                        emailData.cc = parsed.cc.value.map(addr => addr.address);
-                      }
-                      
-                      emailData.subject = parsed.subject || '';
-                      emailData.text = parsed.text || '';
-                      emailData.html = parsed.html || parsed.textAsHtml || '';
-                      emailData.date = parsed.date || new Date();
-                      
-                      // Extract email threading headers
-                      emailData.messageId = parsed.messageId || `${Date.now()}-${emailData.uid}@pehlirasam.com`;
-                      emailData.inReplyTo = parsed.inReplyTo || null;
-                      
-                      // Extract references for conversation threading
-                      if (parsed.references && Array.isArray(parsed.references)) {
-                        emailData.references = parsed.references;
-                      } else if (parsed.references) {
-                        emailData.references = [parsed.references];
-                      }
-                      
-                      // Extract attachments metadata
-                      if (parsed.attachments && Array.isArray(parsed.attachments)) {
-                        emailData.attachments = parsed.attachments.map(att => ({
-                          fileName: att.filename || 'untitled',
-                          fileSize: att.size || 0,
-                          mimeType: att.contentType || 'application/octet-stream',
-                          contentId: att.contentId || null
-                        }));
-                      }
-                      
-                      // Store important headers
-                      emailData.headers = parsed.headers ? parsed.headers.toJSON() : {};
+                      parsedData = parsed;
                     }
                   });
                 });
 
                 msg.once('end', () => {
+                  // Small delay to ensure parsing completes
+                  setTimeout(() => {
+                    // Process parsed data after stream ends
+                    if (parsedData) {
+                    // Extract from email and name
+                    if (parsedData.from?.value && parsedData.from.value.length > 0) {
+                      emailData.from = parsedData.from.value[0].address || parsedData.from.text || '';
+                      emailData.fromName = parsedData.from.value[0].name || '';
+                    } else {
+                      emailData.from = parsedData.from?.text || '';
+                    }
+                    
+                    // Extract to emails - handle multiple recipients
+                    if (parsedData.to?.value && Array.isArray(parsedData.to.value)) {
+                      emailData.to = parsedData.to.value.map(addr => addr.address);
+                    } else if (parsedData.to?.text) {
+                      emailData.to = [parsedData.to.text];
+                    }
+                    
+                    // Extract cc emails
+                    if (parsedData.cc?.value && Array.isArray(parsedData.cc.value)) {
+                      emailData.cc = parsedData.cc.value.map(addr => addr.address);
+                    }
+                    
+                    emailData.subject = parsedData.subject || '';
+                    emailData.text = parsedData.text || '';
+                    emailData.html = parsedData.html || parsedData.textAsHtml || '';
+                    emailData.date = parsedData.date || new Date();
+                    
+                    // Extract email threading headers
+                    emailData.messageId = parsedData.messageId || `${Date.now()}-${emailData.uid}@pehlirasam.com`;
+                    emailData.inReplyTo = parsedData.inReplyTo || null;
+                    
+                    // Extract references for conversation threading
+                    if (parsedData.references && Array.isArray(parsedData.references)) {
+                      emailData.references = parsedData.references;
+                    } else if (parsedData.references) {
+                      emailData.references = [parsedData.references];
+                    }
+                    
+                    // Extract attachments metadata
+                    if (parsedData.attachments && Array.isArray(parsedData.attachments)) {
+                      emailData.attachments = parsedData.attachments.map(att => ({
+                        fileName: att.filename || 'untitled',
+                        fileSize: att.size || 0,
+                        mimeType: att.contentType || 'application/octet-stream',
+                        contentId: att.contentId || null
+                      }));
+                    }
+                    
+                    // Store important headers
+                    emailData.headers = parsedData.headers ? Object.fromEntries(parsedData.headers) : {};
+                  } else {
+                    console.log(`   ⚠️  Warning: Email ${emailData.uid} - No parsed data available`);
+                  }
+                  
                   resolveEmail(emailData);
+                  }, 100); // 100ms delay to ensure parsing completes
                 });
               });
 
@@ -216,10 +219,14 @@ const connectAndFetchEmails = (imapConfig) => {
 };
 
 /**
- * Process incoming emails and send auto-replies
+ * Process incoming emails and track customer replies
  */
 const processIncomingEmails = async () => {
   try {
+    // Clear processed emails set at start of each run
+    // This allows re-processing if logic changes
+    processedEmails.clear();
+    
     // Get email settings
     const settings = await EmailSettings.getOrCreate();
 
@@ -357,15 +364,6 @@ const processIncomingEmails = async () => {
           continue;
         }
         
-        // Only save to inbox if sent to INBOUND email (not reply-to emails)
-        const shouldSaveToInbox = isToInboundEmail;
-        
-        if (shouldSaveToInbox) {
-          console.log(`   ✅ Email sent to INBOUND address - will be saved to inbox`);
-        } else {
-          console.log(`   ℹ️  Email sent to reply-to/domain only - will NOT be saved to inbox (only for auto-reply)`);
-        }
-
         // Extract sender email
         const senderEmail = email.from.match(/[\w\.-]+@[\w\.-]+\.\w+/)?.[0] || email.from;
         
@@ -375,7 +373,66 @@ const processIncomingEmails = async () => {
           continue;
         }
 
-        // Only save to inbox if email is sent to INBOUND email address
+        // Check if this is a REPLY (customer replying to our emails)
+        // An email is considered a reply if:
+        // 1. Has In-Reply-To or References headers, OR
+        // 2. Subject starts with "Re:" or "RE:"
+        const hasReplyHeaders = !!(email.inReplyTo || (email.references && email.references.length > 0));
+        const hasReplySubject = email.subject && (email.subject.startsWith('Re:') || email.subject.startsWith('RE:'));
+        const isReply = hasReplyHeaders || hasReplySubject;
+        
+        console.log(`   🔍 Checking if email is a reply...`);
+        console.log(`      Subject: ${email.subject}`);
+        console.log(`      Starts with Re: ${hasReplySubject ? 'YES' : 'NO'}`);
+        console.log(`      In-Reply-To: ${email.inReplyTo || '(none)'}`);
+        console.log(`      References: ${email.references?.join(', ') || '(none)'}`);
+        
+        // Try to match against our sent emails (optional - for better tracking)
+        let matchedSentEmail = null;
+        if (isReply && (email.inReplyTo || (email.references && email.references.length > 0))) {
+          const messageIdsToCheck = [email.inReplyTo, ...(email.references || [])].filter(Boolean);
+          
+          if (messageIdsToCheck.length > 0) {
+            try {
+              matchedSentEmail = await MailLog.findOne({ 
+                messageId: { $in: messageIdsToCheck }
+              });
+              
+              if (matchedSentEmail) {
+                console.log(`   ✅ Matched to our sent email!`);
+                console.log(`      Original email to: ${matchedSentEmail.to}`);
+                console.log(`      Original subject: ${matchedSentEmail.subject}`);
+              }
+            } catch (checkError) {
+              console.error(`   ⚠️  Error matching sent email:`, checkError.message);
+            }
+          }
+        }
+        
+        if (isReply) {
+          console.log(`   ✅ Email is a REPLY (will be saved to inbox)`);
+        } else {
+          console.log(`   ❌ Email is NOT a reply (automated/unsolicited - will be skipped)`);
+        }
+        
+        // Save to inbox if:
+        // 1. Email is sent to INBOUND email address
+        // 2. Email appears to be a reply (has Re: or reply headers)
+        const shouldSaveToInbox = isToInboundEmail && isReply;
+        
+        if (shouldSaveToInbox) {
+          console.log(`   ✅ Email qualifies for inbox - will be saved`);
+        } else {
+          if (!isToInboundEmail) {
+            console.log(`   ❌ NOT saving: Email not sent to inbound address`);
+          } else if (!isReply) {
+            console.log(`   ❌ NOT saving: Email is not a reply (automated/unsolicited)`);
+          }
+          processedEmails.add(email.uid);
+          continue;
+        }
+
+        // Save email to inbox
         if (shouldSaveToInbox) {
           // Check if email already exists in database (avoid duplicates)
           const existingEmail = await InboxMessage.findOne({ messageId: email.messageId });
@@ -428,6 +485,205 @@ const processIncomingEmails = async () => {
             console.log(`   ✅ Email saved to inbox (ID: ${inboxMessage._id})`);
             console.log(`   ℹ️  Auto-reply disabled for inbound messages - only tracking`);
             savedCount++;
+
+            // Send notification to contact email
+            if (settings.contactEmail) {
+              try {
+                console.log(`   📧 Sending notification to contact email: ${settings.contactEmail}`);
+                
+                const customerName = matchedCustomer 
+                  ? `${matchedCustomer.firstName} ${matchedCustomer.lastName}` 
+                  : email.fromName || senderEmail;
+                
+                const notificationSubject = `New Customer Reply: ${email.subject}`;
+                const notificationHtml = `
+                  <!DOCTYPE html>
+                  <html>
+                    <head>
+                      <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+                        .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-top: none; }
+                        .info-box { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #4CAF50; }
+                        .label { font-weight: bold; color: #555; }
+                        .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+                        .message-preview { background-color: #fff; padding: 15px; border: 1px solid #ddd; margin: 10px 0; border-radius: 3px; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="container">
+                        <div class="header">
+                          <h2>📬 New Customer Reply Received</h2>
+                        </div>
+                        <div class="content">
+                          <p>A customer has replied to your email. Here are the details:</p>
+                          
+                          <div class="info-box">
+                            <p><span class="label">From:</span> ${customerName}</p>
+                            <p><span class="label">Email:</span> ${senderEmail}</p>
+                            ${matchedCustomer ? `<p><span class="label">Customer ID:</span> ${matchedCustomer._id}</p>` : ''}
+                          </div>
+                          
+                          <div class="info-box">
+                            <p><span class="label">Subject:</span> ${email.subject}</p>
+                            <p><span class="label">Received:</span> ${new Date().toLocaleString()}</p>
+                          </div>
+                          
+                          <div class="message-preview">
+                            <p class="label">Message Preview:</p>
+                            <p>${(email.text || '').substring(0, 300)}${(email.text || '').length > 300 ? '...' : ''}</p>
+                          </div>
+                          
+                          <p style="margin-top: 20px;">
+                            <strong>Action Required:</strong> Please log in to your dashboard to view and respond to this message.
+                          </p>
+                        </div>
+                        <div class="footer">
+                          <p>This is an automated notification from Pehli Rasam CRM</p>
+                          <p>Inbound Email: ${settings.inboundEmail}</p>
+                        </div>
+                      </div>
+                    </body>
+                  </html>
+                `;
+                
+                const notificationText = `
+New Customer Reply Received
+
+From: ${customerName}
+Email: ${senderEmail}
+${matchedCustomer ? `Customer ID: ${matchedCustomer._id}` : ''}
+
+Subject: ${email.subject}
+Received: ${new Date().toLocaleString()}
+
+Message Preview:
+${(email.text || '').substring(0, 300)}${(email.text || '').length > 300 ? '...' : ''}
+
+Action Required: Please log in to your dashboard to view and respond to this message.
+
+---
+This is an automated notification from Pehli Rasam CRM
+Inbound Email: ${settings.inboundEmail}
+                `;
+                
+                const notificationResult = await sendEmail({
+                  to: settings.contactEmail,
+                  subject: notificationSubject,
+                  html: notificationHtml,
+                  text: notificationText
+                });
+                
+                if (notificationResult.success) {
+                  console.log(`   ✅ Notification sent to contact email successfully`);
+                } else {
+                  console.error(`   ⚠️  Failed to send notification to contact email:`, notificationResult.error?.message);
+                }
+              } catch (notifyError) {
+                console.error(`   ⚠️  Error sending notification to contact email:`, notifyError.message);
+              }
+            } else {
+              console.log(`   ℹ️  No contact email configured - skipping notification`);
+            }
+
+            // Send auto-reply to customer if enabled
+            if (settings.autoReplyEnabled && settings.autoReplyMessage && settings.contactEmail) {
+              try {
+                // Check if Contact Email SMTP is configured
+                const hasContactEmailSmtp = settings.contactEmailSmtp && 
+                                           settings.contactEmailSmtp.host && 
+                                           settings.contactEmailSmtp.username && 
+                                           settings.contactEmailSmtp.password;
+                
+                if (!hasContactEmailSmtp) {
+                  console.log(`   ⚠️  Auto-reply enabled but Contact Email SMTP not configured - skipping`);
+                  console.log(`   💡 Please configure SMTP settings for Contact Email in Email Settings`);
+                } else {
+                  console.log(`   📧 Auto-reply enabled - sending reply to customer: ${senderEmail}`);
+                  console.log(`   📧 Using Contact Email SMTP: ${settings.contactEmailSmtp.username}`);
+                  
+                  // Create nodemailer transporter for Contact Email
+                  const nodemailer = require('nodemailer');
+                  const contactPort = parseInt(settings.contactEmailSmtp.port) || 587;
+                  const contactSecure = contactPort === 465 || settings.contactEmailSmtp.connectionType === 'ssl';
+                  
+                  const contactTransporter = nodemailer.createTransport({
+                    host: settings.contactEmailSmtp.host,
+                    port: contactPort,
+                    secure: contactSecure,
+                    auth: {
+                      user: settings.contactEmailSmtp.username,
+                      pass: settings.contactEmailSmtp.password.trim()
+                    },
+                    tls: {
+                      rejectUnauthorized: false
+                    }
+                  });
+                  
+                  const autoReplySubject = email.subject.startsWith('Re:') 
+                    ? email.subject 
+                    : `Re: ${email.subject}`;
+                  
+                  const autoReplyHtml = `
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <style>
+                          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                          .message { background-color: #f9f9f9; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+                          .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; border-top: 1px solid #ddd; margin-top: 20px; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="container">
+                          <div class="message">
+                            <p>${settings.autoReplyMessage.replace(/\n/g, '<br>')}</p>
+                          </div>
+                          <div class="footer">
+                            <p>This is an automated response from Pehli Rasam</p>
+                          </div>
+                        </div>
+                      </body>
+                    </html>
+                  `;
+                  
+                  const mailOptions = {
+                    from: `"Pehli Rasam" <${settings.contactEmail}>`,
+                    to: senderEmail,
+                    subject: autoReplySubject,
+                    html: autoReplyHtml,
+                    text: settings.autoReplyMessage
+                  };
+                  
+                  const autoReplyResult = await contactTransporter.sendMail(mailOptions);
+                  
+                  if (autoReplyResult) {
+                    console.log(`   ✅ Auto-reply sent to customer successfully from ${settings.contactEmail}`);
+                    
+                    // Update the inbox message to mark that auto-reply was sent
+                    try {
+                      await InboxMessage.findByIdAndUpdate(inboxMessage._id, {
+                        hasAutoReplied: true
+                      });
+                    } catch (updateError) {
+                      console.error(`   ⚠️  Failed to update hasAutoReplied flag:`, updateError.message);
+                    }
+                  }
+                }
+              } catch (autoReplyError) {
+                console.error(`   ⚠️  Error sending auto-reply:`, autoReplyError.message);
+              }
+            } else {
+              if (!settings.autoReplyEnabled) {
+                console.log(`   ℹ️  Auto-reply disabled - skipping`);
+              } else if (!settings.autoReplyMessage) {
+                console.log(`   ⚠️  Auto-reply enabled but no message configured - skipping`);
+              } else if (!settings.contactEmail) {
+                console.log(`   ⚠️  Auto-reply enabled but no contact email configured - skipping`);
+              }
+            }
 
           } catch (saveError) {
             console.error(`   ❌ Error saving email to inbox:`, saveError.message);

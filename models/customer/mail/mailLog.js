@@ -6,6 +6,15 @@ const mailLogSchema = new mongoose.Schema({
         ref: 'Customer',
         required: true
     },
+    to: {
+        type: String,
+        trim: true,
+    },
+    messageId: {
+        type: String,
+        trim: true,
+        index: true // For faster lookup when checking replies
+    },
     subject: {
         type: String,
         trim: true,
@@ -22,7 +31,8 @@ const mailLogSchema = new mongoose.Schema({
     sentBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Admin',
-        required: true
+        required: false, // Optional - automated emails don't have a specific admin
+        default: null
     },
     sentByEmail: {
         type: String,

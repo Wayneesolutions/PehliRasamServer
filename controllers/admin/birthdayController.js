@@ -1,6 +1,7 @@
 const { getCustomersWithBirthdayToday } = require("../../services/birthdayService");
 const { generateBirthdayEmailHTML, generateBirthdayEmailText } = require("../../templates/birthdayEmail");
 const sendEmail = require("../../utils/sendEmail");
+const MailLog = require("../../models/customer/mail/mailLog");
 
 /**
  * Send birthday reminder emails to all customers whose birthday is today
@@ -58,6 +59,23 @@ const sendBirthdayReminders = async (req, res) => {
         if (emailResult.success) {
           sentCount++;
           console.log(`✅ Birthday email sent to: ${customer.email} (${customer.fullName})`);
+          
+          // Log email to MailLog for reply tracking
+          try {
+            const mailLog = new MailLog({
+              customer: customer._id,
+              to: customer.email,
+              messageId: emailResult.response ? emailResult.response.messageId : null,
+              subject: subject,
+              body: htmlContent,
+              sentBy: null, // Automated email, no specific admin
+              sentByEmail: process.env.FROM_EMAIL || 'info@pehlirasam.com',
+              deliveryStatus: 'Sent'
+            });
+            await mailLog.save();
+          } catch (logError) {
+            console.error(`⚠️ Failed to log birthday email to database:`, logError.message);
+          }
         } else {
           failedCount++;
           failedEmails.push({

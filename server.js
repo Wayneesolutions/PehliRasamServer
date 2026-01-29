@@ -41,20 +41,20 @@ cron.schedule("0 10 * * *", async () => {
 
 console.log("✅ Membership renewal reminder cron job scheduled (Daily at 10:00 AM IST)");
 
-// Schedule email auto-reply check to run every 5 minutes
-cron.schedule("*/5 * * * *", async () => {
-  console.log("📧 Running scheduled email auto-reply check...");
+// Schedule email inbox tracking to run every 1 minute
+cron.schedule("*/1 * * * *", async () => {
+  console.log("📧 Running scheduled email inbox tracking...");
   try {
     await processIncomingEmails();
   } catch (error) {
-    console.error("❌ Error in scheduled email auto-reply check:", error);
+    console.error("❌ Error in scheduled email inbox tracking:", error);
   }
 }, {
   scheduled: true,
   timezone: "Asia/Kolkata"
 });
 
-console.log("✅ Email auto-reply cron job scheduled (Every 5 minutes)");
+console.log("✅ Email inbox tracking cron job scheduled (Every 1 minute)");
 
 // a simple route to check if the server is running
 app.get("/", (req, res) => {

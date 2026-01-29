@@ -41,6 +41,13 @@ const emailSettingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  contactEmailSmtp: {
+    host: { type: String, default: '' },
+    port: { type: String, default: '' },
+    username: { type: String, default: '' },
+    password: { type: String, default: '' },
+    connectionType: { type: String, default: '' }
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Admin'

@@ -3683,6 +3683,8 @@ exports.sendCustomerMail = async (req, res) => {
 
     const mailLog = new MailLog({
       customer: customer._id,
+      to: customer.email,
+      messageId: emailResponse.success && emailResponse.response ? emailResponse.response.messageId : null,
       subject,
       body,
       sentBy: adminId,
@@ -3778,6 +3780,8 @@ exports.sendMailForIntro = async (req, res) => {
     // Log email once (mainly for customer)
     const mailLog = new MailLog({
       customer: customer._id,
+      to: recipients[0], // Store the first recipient (usually customer email)
+      messageId: sendResults[0]?.success && sendResults[0]?.response ? sendResults[0].response.messageId : null,
       subject,
       body,
       sentBy: adminId,
@@ -6700,7 +6704,7 @@ exports.getEmailSettings = async (req, res) => {
 
 exports.updateEmailSettings = async (req, res) => {
   try {
-    const { sendingMethod, smtpSettings, replyToEmail, inboundEmail, contactEmail, imapSettings, autoReplyEnabled, autoReplyMessage } = req.body;
+    const { sendingMethod, smtpSettings, replyToEmail, inboundEmail, contactEmail, contactEmailSmtp, imapSettings, autoReplyEnabled, autoReplyMessage } = req.body;
     const updatedBy = req.id;
 
     const settings = await EmailSettings.getOrCreate();
@@ -6716,6 +6720,12 @@ exports.updateEmailSettings = async (req, res) => {
     if (replyToEmail !== undefined) settings.replyToEmail = replyToEmail;
     if (inboundEmail !== undefined) settings.inboundEmail = inboundEmail;
     if (contactEmail !== undefined) settings.contactEmail = contactEmail;
+    if (contactEmailSmtp !== undefined) {
+      settings.contactEmailSmtp = {
+        ...settings.contactEmailSmtp,
+        ...contactEmailSmtp
+      };
+    }
     if (imapSettings !== undefined) {
       settings.imapSettings = {
         ...settings.imapSettings,
