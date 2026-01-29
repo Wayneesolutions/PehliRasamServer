@@ -1774,7 +1774,10 @@ exports.advancedSearchCustomers = async (req, res) => {
       if ((field === "birthday" || field === "height") && (!Array.isArray(value) || (!value[0] && !value[1]))) {
         continue;
       }
-      if (field !== "location" && field !== "registeredOnDate" && field !== "birthday" && field !== "height" && (!value || !value.trim())) {
+      if (field !== "location" && field !== "registeredOnDate" && field !== "birthday" && field !== "height" && field !== "registeredBy" && (!value || !value.trim())) {
+        continue;
+      }
+      if (field === "registeredBy" && (!value || !value.trim())) {
         continue;
       }
 
@@ -1845,6 +1848,42 @@ exports.advancedSearchCustomers = async (req, res) => {
         // Intersect with current filtered IDs
         filteredCustomerIds = new Set(
           Array.from(filteredCustomerIds).filter(id => dateMatches.includes(id))
+        );
+        continue;
+      }
+
+      // Handle registeredBy (uses Customer createdBy field)
+      if (field === "registeredBy") {
+        const registeredByValue = value.trim().toLowerCase();
+        
+        // Get current filtered customers with createdBy field
+        const currentCustomers = await Customer.find(
+          { 
+            _id: { $in: Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id)) },
+            activeStatus: true,
+            isDeleted: false
+          },
+          { _id: 1, createdBy: 1 }
+        );
+        
+        const registeredByMatches = currentCustomers.filter(customer => {
+          if (registeredByValue === "admin") {
+            // Customer was created by admin (has createdBy field)
+            return customer.createdBy != null;
+          } else if (registeredByValue === "self") {
+            // Customer self-registered (no createdBy field)
+            return customer.createdBy == null;
+          } else if (registeredByValue === "referral") {
+            // For now, treat referral same as self-registration
+            // TODO: Add referral tracking field to Customer model
+            return customer.createdBy == null;
+          }
+          return false;
+        }).map(c => c._id.toString());
+        
+        // Intersect with current filtered IDs
+        filteredCustomerIds = new Set(
+          Array.from(filteredCustomerIds).filter(id => registeredByMatches.includes(id))
         );
         continue;
       }
