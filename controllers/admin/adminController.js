@@ -37,8 +37,8 @@ const EmailSettings = require("../../models/admin/emailSettingsModel");
 const PresetFields = require('../../models/customer/Presets/presetFields');
 const Intro = require("../../models/customer/intro/intro");
 const IntroFields = require("../../models/customer/intro/introFields");
-const he = require('he');
 const InboxMessage = require('../../models/customer/mail/inboxMessage');
+const he = require('he');
 
 
 
@@ -1858,8 +1858,34 @@ exports.advancedSearchCustomers = async (req, res) => {
 
       // Handle range fields (birthday/age, height)
       if (field === "birthday" || field === "height") {
-        const minValue = value[0] ? parseFloat(value[0]) : null;
-        const maxValue = value[1] ? parseFloat(value[1]) : null;
+        let minValue = null;
+        let maxValue = null;
+
+        if (field === "height") {
+          // Convert height format to inches for comparison
+          if (value[0]) {
+            const minStr = value[0].toString().trim();
+            const minMatch = minStr.match(/(\d+)['"](\d+)/);
+            if (minMatch) {
+              const feet = parseInt(minMatch[1]);
+              const inches = parseInt(minMatch[2]);
+              minValue = feet * 12 + inches;
+            }
+          }
+          if (value[1]) {
+            const maxStr = value[1].toString().trim();
+            const maxMatch = maxStr.match(/(\d+)['"](\d+)/);
+            if (maxMatch) {
+              const feet = parseInt(maxMatch[1]);
+              const inches = parseInt(maxMatch[2]);
+              maxValue = feet * 12 + inches;
+            }
+          }
+        } else {
+          // For birthday (age), use values directly
+          minValue = value[0] ? parseFloat(value[0]) : null;
+          maxValue = value[1] ? parseFloat(value[1]) : null;
+        }
 
         if (minValue === null && maxValue === null) {
           continue; // Skip if both are empty
@@ -3665,18 +3691,53 @@ exports.sendCustomerMail = async (req, res) => {
     console.log('   Inbound Email:', emailSettings.inboundEmail || '(not set)');
     console.log('   Combined Reply-To:', replyTo || '(not set)');
 
-    const htmlContent = `
-        <html>
-          <body>
-            ${body}
-          </body>
-        </html>
-      `;
+    // DEBUG: Log the incoming body content
+    console.log('\n================== EMAIL DEBUG ==================');
+    console.log('📧 INCOMING BODY FROM FRONTEND:');
+    console.log('   Length:', body.length);
+    console.log('   First 200 chars:', body.substring(0, 200));
+    console.log('   Contains <p> tag:', body.includes('<p>'));
+    console.log('   Contains &lt; (encoded):', body.includes('&lt;'));
+    console.log('   Body type:', typeof body);
+    
+    // DECODE HTML entities - frontend sends &lt; instead of <
+    const decodedBody = he.decode(body);
+    console.log('\n📧 AFTER DECODING:');
+    console.log('   First 200 chars:', decodedBody.substring(0, 200));
+    console.log('   Contains <p> tag:', decodedBody.includes('<p>'));
+    console.log('   Contains &lt; (encoded):', decodedBody.includes('&lt;'));
+    
+    // Prepare HTML content - use decoded body
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 20px; font-family: Arial, sans-serif;">
+  ${decodedBody}
+</body>
+</html>`;
+
+    // Create plain text version by stripping HTML tags
+    const textContent = decodedBody.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+
+    console.log('\n📧 PREPARED HTML CONTENT:');
+    console.log('   Total length:', htmlContent.length);
+    console.log('   First 300 chars:', htmlContent.substring(0, 300));
+    console.log('   Last 200 chars:', htmlContent.substring(htmlContent.length - 200));
+    
+    console.log('\n📧 TEXT VERSION:');
+    console.log('   Length:', textContent.length);
+    console.log('   First 150 chars:', textContent.substring(0, 150));
+    console.log('================================================\n');
 
     const emailResponse = await sendEmail({
       to: customer.email,
       subject,
       html: htmlContent,
+      text: textContent,
       attachments,
       replyTo: replyTo
     });
@@ -3764,14 +3825,48 @@ exports.sendMailForIntro = async (req, res) => {
     console.log('   Inbound Email:', emailSettings.inboundEmail || '(not set)');
     console.log('   Combined Reply-To:', replyTo);
 
+    // DECODE HTML entities - frontend sends &lt; instead of <
+    const decodedBody = he.decode(body);
+    
+    console.log('📧 Intro Email - Decoding body...');
+    console.log('   Original contains &lt;:', body.includes('&lt;'));
+    console.log('   Decoded contains <p>:', decodedBody.includes('<p>'));
+    
+    // Prepare email content - use decoded body
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 20px; font-family: Arial, sans-serif;">
+  ${decodedBody}
+  <br/><br/>
+  <div style="text-align: center; margin-top: 30px;">
+    <a href="${introLink}" style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">
+      Click here to view the introduction
+    </a>
+  </div>
+</body>
+</html>`;
+
+    // Create plain text version
+    const textContent = decodedBody.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim() + '\n\n' + 
+                        'Click here to view the introduction:\n' + introLink;
+
+    console.log('📧 Sending intro email...');
+    console.log('   Recipients:', recipients.length);
+    console.log('   HTML length:', htmlContent.length);
+
     // Send email to each recipient
     const sendResults = await Promise.all(
       recipients.map(email =>
         sendEmail({
           to: email,
           subject,
-          text: he.decode(body).replace(/<[^>]*>/g, '') + '\n\n' + introLink, // Plain text version
-          html: `${he.decode(body)}<br/><br/><a href="${introLink}"></a>`,
+          text: textContent,
+          html: htmlContent,
           replyTo: replyTo
         })
       )

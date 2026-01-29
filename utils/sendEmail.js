@@ -306,7 +306,7 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], 
 
     try {
         // Log email details before sending
-        console.log('📧 Sending email with options:');
+        console.log('\n📧 ========== SENDING EMAIL ==========');
         console.log('   To:', to);
         console.log('   Subject:', cleanSubject);
         console.log('   From:', mailOptions.from);
@@ -315,9 +315,22 @@ const sendEmail = async ({ to, subject, html = '', text = '', attachments = [], 
         } else {
             console.log('   Reply-To: (not set)');
         }
+        console.log('   Has HTML:', !!html);
+        console.log('   Has Text:', !!text);
+        if (html) {
+            console.log('   HTML length:', html.length);
+            console.log('   HTML starts with:', html.substring(0, 100));
+            console.log('   HTML contains <html>:', html.includes('<html>'));
+            console.log('   HTML contains <body>:', html.includes('<body>'));
+        }
+        if (text) {
+            console.log('   Text length:', text.length);
+            console.log('   Text preview:', text.substring(0, 100));
+        }
+        console.log('========================================\n');
         
         const info = await emailTransporter.sendMail(mailOptions);
-        console.log('✅ Email sent successfully');
+        console.log('✅ Email sent successfully - Message ID:', info.messageId);
         return { success: true, response: info };
     } catch (error) {
         console.error('❌ Nodemailer Error:', error.message);
