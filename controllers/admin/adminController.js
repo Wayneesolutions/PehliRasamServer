@@ -1811,6 +1811,11 @@ exports.advancedSearchCustomers = async (req, res) => {
       if (field === "registeredOnDate") {
         const fromDate = value[0] ? new Date(value[0]) : null;
         const toDate = value[1] ? new Date(value[1]) : null;
+        
+        // Set time ranges for accurate date filtering
+        if (fromDate) {
+          fromDate.setHours(0, 0, 0, 0); // Start of day
+        }
         if (toDate) {
           toDate.setHours(23, 59, 59, 999); // End of day
         }
@@ -3762,7 +3767,13 @@ exports.sendCustomerMail = async (req, res) => {
 
 
     let adminname = await Admin.findById(req.id).select("firstName lastName");
-    let changeSummary = `Sanded mail to ${customer.firstName} ${customer.lastName} "subject : ${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+    
+    // Build customer name properly
+    const customerNameParts = [customer.firstName, customer.middelName, customer.lastName]
+      .filter(part => part && part.trim() !== '');
+    const customerFullName = customerNameParts.join(' ');
+    
+    let changeSummary = `→ <${customer.email}> Sent mail to ${customerFullName} - Subject: "${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
     await ActivityLog.create({
       customerId: customer._id,
       performedBy: req.id,
@@ -3888,7 +3899,13 @@ exports.sendMailForIntro = async (req, res) => {
 
 
     let adminname = await Admin.findById(req.id).select("firstName lastName");
-    let changeSummary = `Sanded mail to ${customer.firstName} ${customer.lastName} "subject : ${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+    
+    // Build customer name properly
+    const customerNameParts = [customer.firstName, customer.middelName, customer.lastName]
+      .filter(part => part && part.trim() !== '');
+    const customerFullName = customerNameParts.join(' ');
+    
+    let changeSummary = `→ <${customer.email}> Sent intro mail to ${customerFullName} - Subject: "${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
     await ActivityLog.create({
       customerId: customer._id,
       performedBy: req.id,
@@ -4561,14 +4578,25 @@ exports.createIntro = async (req, res) => {
     console.log('PresetId type:', typeof newIntro.presetId);
 
     const customer = await Customer.findOne({ _id: customerId })
-    const cname = customer.firstName + ' ' + customer.middelName + ' ' + customer.lastName
+    
+    // Build customer name properly, handling missing middle name
+    const nameParts = [
+      customer.firstName,
+      customer.middelName, // Note: typo in schema "middelName"
+      customer.lastName
+    ].filter(part => part && part.trim() !== ''); // Remove null/undefined/empty parts
+    const cname = nameParts.join(' ');
+    
     const admin = await Admin.findOne({ _id: req.id })
     const aname = admin.firstName + ' ' + admin.lastName
+    
+    // Format activity log to match timeline display expectation
+    // Timeline expects: "sent Intro #12345 of Customer Name to email@example.com"
     const activityData = {
       customerId: customerId,
       performedBy: req.id,
       action: "Intro generated",
-      changeSummary: `${cname} created ${newIntro.link} by Admin ${aname}`
+      changeSummary: `sent Intro #${nextIntroId} of ${cname} to ${customer.email || 'N/A'} by Admin ${aname}`
     }
     const newActiviy = new ActivityLog(activityData)
     await newActiviy.save()
