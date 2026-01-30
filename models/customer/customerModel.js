@@ -88,6 +88,10 @@ const customerSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    pinnedAt: {
+        type: Date,
+        default: null
+    },
     imagePath: { 
         type: String, 
         trim: true, 

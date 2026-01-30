@@ -1672,7 +1672,7 @@ exports.allActiveCustomer = async (req, res) => {
               activeStatus: true,
               isDeleted: false
             },
-            { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
+            { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1, pinnedAt: 1 }
           );
         }
       }
@@ -1680,7 +1680,7 @@ exports.allActiveCustomer = async (req, res) => {
       // No list filter, return all active customers
       customers = await Customer.find(
         { activeStatus: true, isDeleted: false },
-        { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1 }
+        { firstName: 1, middleName: 1, lastName: 1, email: 1, activeStatus: 1, imagePath: 1, address: 1, Number: 1, isPinned: 1, pinnedAt: 1 }
       );
     }
 
@@ -5811,6 +5811,12 @@ exports.togglePinCustomer = async (req, res) => {
 
     // Toggle pin status
     customer.isPinned = !customer.isPinned;
+    // Set pinnedAt timestamp when pinning, clear when unpinning
+    if (customer.isPinned) {
+      customer.pinnedAt = new Date();
+    } else {
+      customer.pinnedAt = null;
+    }
     customer.updatedBy = updatedBy;
 
     await customer.save();
@@ -5830,7 +5836,8 @@ exports.togglePinCustomer = async (req, res) => {
       message: `Customer ${customer.isPinned ? 'pinned' : 'unpinned'} successfully`,
       data: {
         customerId: customer._id,
-        isPinned: customer.isPinned
+        isPinned: customer.isPinned,
+        pinnedAt: customer.pinnedAt
       }
     });
   } catch (error) {
