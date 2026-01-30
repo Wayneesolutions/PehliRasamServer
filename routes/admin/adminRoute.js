@@ -87,6 +87,7 @@ const {
   getMatchingUsers,
   getCustomerProfile,
   getAllFieldsList,
+  getFieldByName,
   addCustomer,
   reactivateCustomer,
 
@@ -284,6 +285,7 @@ router.get("/getCustomerCountLastFiveDays",checkAdminToken, getCustomerCountLast
 
 router.post("/matchingUsers", getMatchingUsers)
 router.post("/fromFieldList", getAllFieldsList)
+router.get("/getFieldByName", checkAdminToken, getFieldByName)
 router.post("/addCustomer", addCustomer)
 // router.post("/updateCustomer", updateCustomer)getTodayStatsCount
 

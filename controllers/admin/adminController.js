@@ -1856,6 +1856,15 @@ exports.advancedSearchCustomers = async (req, res) => {
       if (field === "registeredBy") {
         const registeredByValue = value.trim().toLowerCase();
         
+        // Normalize the value to handle various formats
+        // Support both old format (admin, self, referral) and new dynamic format
+        const normalizedValue = registeredByValue
+          .replace(/\s+/g, '') // Remove all spaces
+          .replace(/registration/gi, '') // Remove "registration" word
+          .replace(/self/gi, 'self')
+          .replace(/admin/gi, 'admin')
+          .replace(/referral/gi, 'referral');
+        
         // Get current filtered customers with createdBy field
         const currentCustomers = await Customer.find(
           { 
@@ -1867,18 +1876,25 @@ exports.advancedSearchCustomers = async (req, res) => {
         );
         
         const registeredByMatches = currentCustomers.filter(customer => {
-          if (registeredByValue === "admin") {
+          // Handle admin variations (admin, Admin, etc.)
+          if (normalizedValue.includes('admin')) {
             // Customer was created by admin (has createdBy field)
             return customer.createdBy != null;
-          } else if (registeredByValue === "self") {
+          } 
+          // Handle self-registration variations (self, selfregistration, etc.)
+          else if (normalizedValue.includes('self')) {
             // Customer self-registered (no createdBy field)
             return customer.createdBy == null;
-          } else if (registeredByValue === "referral") {
+          } 
+          // Handle referral variations
+          else if (normalizedValue.includes('referral')) {
             // For now, treat referral same as self-registration
             // TODO: Add referral tracking field to Customer model
             return customer.createdBy == null;
           }
-          return false;
+          // For any other value, default to checking if createdBy is null (self-registered)
+          // This allows for future expansion of registeredBy options
+          return customer.createdBy == null;
         }).map(c => c._id.toString());
         
         // Intersect with current filtered IDs
@@ -5233,6 +5249,57 @@ exports.getAllFieldsList = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch fields list',
+      error: error.message
+    });
+  }
+};
+
+exports.getFieldByName = async (req, res) => {
+  try {
+    const { fieldName } = req.query;
+
+    if (!fieldName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Field name is required'
+      });
+    }
+
+    // Case-insensitive search for "Registered By" field
+    const field = await FormField.findOne({
+      $or: [
+        { attributeName: fieldName },
+        { attributeName: { $regex: new RegExp(`^${fieldName}$`, 'i') } }
+      ],
+      isDeleted: false,
+      isActive: true
+    });
+
+    if (!field) {
+      return res.status(200).json({
+        success: true,
+        data: null,
+        message: 'Field not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        _id: field._id,
+        attributeName: field.attributeName,
+        attributeType: field.attributeType,
+        attributeOption: field.attributeOption || [],
+        attributeEnum: field.attributeEnum || []
+      },
+      message: 'Field retrieved successfully'
+    });
+
+  } catch (error) {
+    console.error('Error fetching field by name:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch field',
       error: error.message
     });
   }
