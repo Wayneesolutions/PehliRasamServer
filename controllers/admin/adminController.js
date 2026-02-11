@@ -3909,7 +3909,7 @@ exports.sendMailForIntro = async (req, res) => {
 <body style="margin: 0; padding: 20px; font-family: Arial, sans-serif;">
   ${decodedBody}
   <br/><br/>
-  <div style="text-align: center; margin-top: 30px;">
+  <div style="text-align: center">
     <a href="${introLink}" style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px;">
       Click here to view the introduction
     </a>

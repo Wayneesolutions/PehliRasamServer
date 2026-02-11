@@ -11,7 +11,6 @@ const { processIncomingEmails } = require("./utils/emailReceiver");
 // connecting 
 connectDB();
 
-// Schedule birthday reminder emails to run daily at 9:00 AM
 cron.schedule("0 9 * * *", async () => {
   console.log("🎂 Running scheduled birthday reminder check...");
   try {
