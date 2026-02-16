@@ -25,6 +25,10 @@ const activityLogSchema = new mongoose.Schema({
   changeSummary: {
     type: String,
     default: "",
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
   }
 }, { timestamps: true });
 

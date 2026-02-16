@@ -250,14 +250,29 @@ const processIncomingEmails = async () => {
     }
 
     // Configure IMAP connection
+    const imapPort = parseInt(settings.imapSettings.port) || 993;
+    const imapSecure = settings.imapSettings.secure !== false;
+    
+    // For Hostinger and other providers, port 143 uses STARTTLS, port 993 uses SSL
     const imapConfig = {
       user: settings.imapSettings.username,
-      password: settings.imapSettings.password,
+      password: settings.imapSettings.password.trim(), // Remove any whitespace
       host: settings.imapSettings.host,
-      port: parseInt(settings.imapSettings.port) || 993,
-      tls: settings.imapSettings.secure !== false,
-      tlsOptions: { rejectUnauthorized: false }
+      port: imapPort,
+      tls: imapSecure, // true for SSL (993), false for STARTTLS (143)
+      tlsOptions: { rejectUnauthorized: false },
+      // Additional options for better compatibility
+      connTimeout: 60000,
+      authTimeout: 60000
     };
+    
+    // Log configuration for debugging
+    console.log(`   📋 IMAP Configuration:`);
+    console.log(`      Host: ${imapConfig.host}`);
+    console.log(`      Port: ${imapConfig.port}`);
+    console.log(`      TLS/SSL: ${imapConfig.tls ? 'SSL' : 'STARTTLS'}`);
+    console.log(`      Username: ${imapConfig.user}`);
+    console.log(`      Password Length: ${imapConfig.password.length}`);
 
     console.log('📧 Checking for new emails...');
     console.log(`   Connecting to IMAP: ${imapConfig.host}:${imapConfig.port}`);
@@ -273,17 +288,38 @@ const processIncomingEmails = async () => {
       ]);
     } catch (error) {
       console.error('❌ Error connecting to IMAP:', error.message);
-      if (error.code === 'EAUTH' || error.message.includes('authentication')) {
+      if (error.code === 'EAUTH' || error.message.includes('authentication') || error.message.includes('Invalid credentials') || error.message.includes('Failure')) {
         console.error('   🔐 Authentication failed. Please check:');
-        console.error('   1. IMAP username and password are correct');
-        console.error('   2. For Gmail: Use App Password (not regular password)');
-        console.error('   3. IMAP is enabled in your email account settings');
+        console.error(`   1. IMAP Host: ${imapConfig.host} (should match your email provider)`);
+        console.error(`   2. IMAP Username: ${imapConfig.user}`);
+        console.error(`   3. IMAP Password: Make sure it matches your SMTP password`);
+        console.error(`   4. IMAP Port: ${imapConfig.port} (993 for SSL, 143 for STARTTLS)`);
+        console.error(`   5. TLS/SSL Setting: ${imapConfig.tls ? 'SSL' : 'STARTTLS'}`);
+        
+        // Check if using Gmail vs Hostinger
+        if (imapConfig.host.includes('gmail.com')) {
+          console.error('   📧 Gmail detected - You MUST use an App Password:');
+          console.error('      - Enable 2-Step Verification: https://myaccount.google.com/security');
+          console.error('      - Generate App Password: https://myaccount.google.com/apppasswords');
+        } else {
+          console.error('   📧 Hostinger/Other Provider - Common issues:');
+          console.error('      - IMAP must be enabled in your hosting control panel');
+          console.error('      - Try port 143 with STARTTLS (Secure: false) if 993 doesn\'t work');
+          console.error('      - Try port 993 with SSL (Secure: true) if 143 doesn\'t work');
+          console.error('      - Password should be the same as SMTP password');
+          console.error('      - Check Hostinger email settings for correct IMAP server');
+        }
+        
+        console.error('   💡 TIP: If SMTP works but IMAP doesn\'t, try:');
+        console.error('      - Port 143 with Secure: false (STARTTLS)');
+        console.error('      - Port 993 with Secure: true (SSL)');
+        console.error('      - Verify IMAP is enabled in your hosting control panel');
       } else if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
         console.error('   🔌 Connection failed. Please check:');
-        console.error(`   1. IMAP Host: ${imapConfig.host}`);
+        console.error(`   1. IMAP Host: ${imapConfig.host} (verify this is correct for your provider)`);
         console.error(`   2. IMAP Port: ${imapConfig.port}`);
         console.error('   3. Firewall allows outbound connections');
-        console.error('   4. For Gmail: Use imap.gmail.com:993');
+        console.error('   4. IMAP service is enabled on your email server');
       }
       return { processed: 0, saved: 0, error: error.message };
     }
@@ -324,9 +360,10 @@ const processIncomingEmails = async () => {
         }
         
         // Check if email is sent to inbound address (check To and CC fields)
+        // ONLY check for the configured inbound email address (e.g., info@pehlirasam.com)
+        // Do NOT check IMAP username to ensure only emails sent to the specific inbound address are saved
         const isToInboundEmail = allRecipients.includes(inboundEmailLower) || 
-                                 allRecipients.includes(`<${inboundEmailLower}>`) ||
-                                 (settings.imapSettings.username && allRecipients.includes(settings.imapSettings.username.toLowerCase()));
+                                 allRecipients.includes(`<${inboundEmailLower}>`);
         
         // Check if email is sent to any reply-to addresses (check To and CC fields)
         const isToReplyToEmail = replyToEmails.length > 0 && replyToEmails.some(replyEmail => 
@@ -417,17 +454,16 @@ const processIncomingEmails = async () => {
         
         // Save to inbox if:
         // 1. Email is sent to INBOUND email address
-        // 2. Email appears to be a reply (has Re: or reply headers)
-        const shouldSaveToInbox = isToInboundEmail && isReply;
+        // Save ALL emails sent to inbound address, not just replies
+        const shouldSaveToInbox = isToInboundEmail;
         
         if (shouldSaveToInbox) {
-          console.log(`   ✅ Email qualifies for inbox - will be saved`);
-        } else {
-          if (!isToInboundEmail) {
-            console.log(`   ❌ NOT saving: Email not sent to inbound address`);
-          } else if (!isReply) {
-            console.log(`   ❌ NOT saving: Email is not a reply (automated/unsolicited)`);
+          console.log(`   ✅ Email qualifies for inbox - will be saved (sent to inbound address)`);
+          if (isReply) {
+            console.log(`   ℹ️  Email is also a reply`);
           }
+        } else {
+          console.log(`   ❌ NOT saving: Email not sent to inbound address`);
           processedEmails.add(email.uid);
           continue;
         }

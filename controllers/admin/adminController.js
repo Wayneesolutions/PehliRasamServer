@@ -76,9 +76,66 @@ exports.create_admin = async (req, res) => {
 
     const { firstName, lastName, email, password, permissions, tempTime } = req.body;
 
-    const existingAdmin = await Admin.findOne({ email });
+    // Validate email format
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Normalize email (lowercase and trim)
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check if admin with this email already exists (excluding deleted admins)
+    const existingAdmin = await Admin.findOne({ 
+      email: normalizedEmail, 
+      isDeleted: false 
+    });
+    
     if (existingAdmin) {
       return res.status(400).json({ error: "Admin with this email already exists" });
+    }
+
+    // Check if there's a deleted admin with this email - if so, reactivate it
+    const deletedAdmin = await Admin.findOne({ 
+      email: normalizedEmail, 
+      isDeleted: true 
+    });
+
+    if (deletedAdmin) {
+      // Reactivate the deleted admin instead of creating a new one
+      // Set default password if not provided
+      const plainPassword = password || "123456789";
+      
+      // Encrypt password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+      // Update the deleted admin to reactivate it
+      deletedAdmin.firstName = firstName.trim();
+      deletedAdmin.lastName = lastName.trim();
+      deletedAdmin.password = hashedPassword;
+      deletedAdmin.isDeleted = false;
+      deletedAdmin.status = 'active';
+      deletedAdmin.lastLogin = null; // Reset last login
+      
+      await deletedAdmin.save();
+
+      // Return admin without password
+      const adminResponse = {
+        _id: deletedAdmin._id,
+        firstName: deletedAdmin.firstName,
+        lastName: deletedAdmin.lastName,
+        email: deletedAdmin.email,
+        status: deletedAdmin.status,
+        role: deletedAdmin.role,
+        createdAt: deletedAdmin.createdAt,
+        updatedAt: deletedAdmin.updatedAt
+      };
+
+      return res.status(200).json({ 
+        success: true,
+        message: "Admin reactivated successfully", 
+        admin: adminResponse 
+      });
     }
 
     // Set default password if not provided
@@ -90,16 +147,83 @@ exports.create_admin = async (req, res) => {
 
     // Create new admin
     const admin = new Admin({
-      firstName,
-      lastName,
-      email,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: normalizedEmail,
       password: hashedPassword,
+      isDeleted: false, // Ensure new admin is not deleted
+      status: 'active' // Set status to active
     });
 
     await admin.save();
-    res.status(201).json({ message: "Admin created successfully", admin });
+    
+    // Return admin without password
+    const adminResponse = {
+      _id: admin._id,
+      firstName: admin.firstName,
+      lastName: admin.lastName,
+      email: admin.email,
+      status: admin.status,
+      role: admin.role,
+      createdAt: admin.createdAt
+    };
+
+    res.status(201).json({ 
+      success: true,
+      message: "Admin created successfully", 
+      admin: adminResponse 
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    // Handle MongoDB duplicate key error (unique constraint)
+    if (error.code === 11000) {
+      // If we still get a duplicate key error, check for deleted admin and reactivate
+      const normalizedEmail = req.body.email?.trim().toLowerCase();
+      if (normalizedEmail) {
+        const deletedAdmin = await Admin.findOne({ 
+          email: normalizedEmail, 
+          isDeleted: true 
+        });
+        
+        if (deletedAdmin) {
+          // Reactivate the deleted admin
+          const plainPassword = req.body.password || "123456789";
+          const salt = await bcrypt.genSalt(10);
+          const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+          deletedAdmin.firstName = req.body.firstName?.trim() || deletedAdmin.firstName;
+          deletedAdmin.lastName = req.body.lastName?.trim() || deletedAdmin.lastName;
+          deletedAdmin.password = hashedPassword;
+          deletedAdmin.isDeleted = false;
+          deletedAdmin.status = 'active';
+          deletedAdmin.lastLogin = null;
+          
+          await deletedAdmin.save();
+
+          const adminResponse = {
+            _id: deletedAdmin._id,
+            firstName: deletedAdmin.firstName,
+            lastName: deletedAdmin.lastName,
+            email: deletedAdmin.email,
+            status: deletedAdmin.status,
+            role: deletedAdmin.role,
+            createdAt: deletedAdmin.createdAt,
+            updatedAt: deletedAdmin.updatedAt
+          };
+
+          return res.status(200).json({ 
+            success: true,
+            message: "Admin reactivated successfully", 
+            admin: adminResponse 
+          });
+        }
+      }
+      
+      return res.status(400).json({ 
+        error: "Admin with this email already exists" 
+      });
+    }
+    console.error('Create Admin Error:', error);
+    res.status(500).json({ error: error.message || "Internal server error" });
   }
 };
 
@@ -362,24 +486,61 @@ exports.deactiveAdmin = async (req, res) => {
     const { userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: "Admin ID is required" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Admin ID is required" 
+      });
     }
 
-    const admin = await Admin.findById({ _id: userId });
+    // Find the admin by ID
+    const admin = await Admin.findById(userId);
 
     if (!admin) {
-      return res.status(404).json({ message: "Admin not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Admin not found" 
+      });
     }
 
-    // Update admin status to inactive
+    // Protect the main admin account (admin@gmail.com) from deletion
+    if (admin.email && admin.email.toLowerCase() === 'admin@gmail.com') {
+      return res.status(403).json({ 
+        success: false,
+        message: "Cannot delete the main administrator account" 
+      });
+    }
+
+    // Check if already deleted
+    if (admin.isDeleted) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Admin is already deleted" 
+      });
+    }
+
+    // Soft delete: Update admin status to deleted
     admin.isDeleted = true;
+    admin.status = 'inactive';
     await admin.save();
 
-    res.status(200).json({ success: true, message: "Admin deleted successfully", admin });
+    res.status(200).json({ 
+      success: true, 
+      message: "Admin deleted successfully",
+      data: {
+        _id: admin._id,
+        email: admin.email,
+        firstName: admin.firstName,
+        lastName: admin.lastName
+      }
+    });
 
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Delete Admin Error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: "Internal server error",
+      message: error.message 
+    });
   }
 }
 
@@ -3960,12 +4121,20 @@ exports.sendMailForIntro = async (req, res) => {
       .filter(part => part && part.trim() !== '');
     const customerFullName = customerNameParts.join(' ');
     
-    let changeSummary = `→ <${customer.email}> Sent intro mail to ${customerFullName} - Subject: "${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
+    let changeSummary = `Sent intro mail to ${customerFullName} - Subject: "${subject}" by Admin ${adminname.firstName} ${adminname.lastName}`;
     await ActivityLog.create({
       customerId: customer._id,
       performedBy: req.id,
       action: `mail sent`,
-      changeSummary: changeSummary
+      changeSummary: changeSummary,
+      metadata: {
+        type: 'intro_email',
+        recipients: recipients,
+        extraEmails: extraEmails,
+        customerEmail: customer.email,
+        subject: subject,
+        introLink: introLink
+      }
     });
 
     return res.status(200).json({
@@ -3982,9 +4151,11 @@ exports.sendMailForIntro = async (req, res) => {
 
 exports.getMailLogs = async (req, res) => {
   try {
-    const { search } = req.body;
-    let logs = [];
-
+    const { search, page = 1, limit = 20 } = req.body || req.query || {};
+    
+    // Build filter query
+    let filter = {};
+    
     if (search && search.trim().length > 0) {
       const safeSearch = escapeRegex(search.trim());
 
@@ -3998,19 +4169,29 @@ exports.getMailLogs = async (req, res) => {
 
       const customerIds = matchedCustomers.map(c => c._id);
 
-      logs = await MailLog.find({
+      filter = {
         $or: [
           { customer: { $in: customerIds } },
           { subject: { $regex: safeSearch, $options: 'i' } }
         ]
-      })
-        .populate('customer', 'email firstName lastName')
-        .sort({ sentAt: -1 });
-    } else {
-      logs = await MailLog.find()
-        .populate('customer', 'email firstName lastName')
-        .sort({ sentAt: -1 });
+      };
     }
+
+    // Get total count
+    const total = await MailLog.countDocuments(filter);
+
+    // Calculate pagination
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get paginated logs
+    const logs = await MailLog.find(filter)
+      .populate('customer', 'email firstName lastName')
+      .sort({ sentAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
 
     const result = logs.map(log => ({
       to: log.customer?.email || 'N/A',
@@ -4022,7 +4203,16 @@ exports.getMailLogs = async (req, res) => {
       status: log.deliveryStatus
     }));
 
-    return res.status(200).json({ count: result.length, logs: result });
+    return res.status(200).json({ 
+      count: result.length, 
+      logs: result,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
 
   } catch (error) {
     console.error('Get/Search Mail Logs Error:', error);
@@ -5524,6 +5714,7 @@ exports.getActivityLogs = async (req, res) => {
           createdAt: 1,
           updatedAt: 1,
           changeSummary: 1,
+          metadata: 1,
           "customerData.firstName": 1,
           "customerData.lastName": 1,
           "customerData._id": 1,
@@ -7175,8 +7366,28 @@ exports.getInboxMessages = async (req, res) => {
       endDate 
     } = req.query;
 
+    // Get inbound email from settings to filter messages
+    const emailSettings = await EmailSettings.getOrCreate();
+    const inboundEmail = emailSettings.inboundEmail ? emailSettings.inboundEmail.toLowerCase().trim() : null;
+
     // Build filter query
     const filter = { isDeleted: false };
+
+    // Only show emails sent to the inbound email address
+    // This ensures only emails sent to info@pehlirasam.com (or configured inbound email) are shown
+    // Since 'to' and 'cc' are arrays stored in lowercase (via schema), MongoDB's { arrayField: value } 
+    // automatically checks if the array contains that value
+    if (inboundEmail) {
+      filter.$or = [
+        { to: inboundEmail },
+        { to: `<${inboundEmail}>` },
+        { cc: inboundEmail },
+        { cc: `<${inboundEmail}>` }
+      ];
+    } else {
+      // If inbound email is not configured, show all non-deleted messages (fallback)
+      console.warn('⚠️  Inbound email not configured - showing all messages');
+    }
 
     if (isRead !== undefined) {
       filter.isRead = isRead === 'true';
@@ -7187,12 +7398,28 @@ exports.getInboxMessages = async (req, res) => {
     }
 
     if (search) {
-      filter.$or = [
-        { subject: { $regex: search, $options: 'i' } },
-        { from: { $regex: search, $options: 'i' } },
-        { fromName: { $regex: search, $options: 'i' } },
-        { textBody: { $regex: search, $options: 'i' } }
-      ];
+      // Combine search with existing $or if inbound email filter exists
+      if (filter.$or) {
+        filter.$and = [
+          { $or: filter.$or },
+          {
+            $or: [
+              { subject: { $regex: search, $options: 'i' } },
+              { from: { $regex: search, $options: 'i' } },
+              { fromName: { $regex: search, $options: 'i' } },
+              { textBody: { $regex: search, $options: 'i' } }
+            ]
+          }
+        ];
+        delete filter.$or;
+      } else {
+        filter.$or = [
+          { subject: { $regex: search, $options: 'i' } },
+          { from: { $regex: search, $options: 'i' } },
+          { fromName: { $regex: search, $options: 'i' } },
+          { textBody: { $regex: search, $options: 'i' } }
+        ];
+      }
     }
 
     if (startDate || endDate) {
@@ -7213,11 +7440,20 @@ exports.getInboxMessages = async (req, res) => {
       .skip((parseInt(page) - 1) * parseInt(limit))
       .lean();
 
-    // Get unread count
-    const unreadCount = await InboxMessage.countDocuments({ 
+    // Get unread count (also filtered by inbound email)
+    const unreadFilter = { 
       isDeleted: false, 
       isRead: false 
-    });
+    };
+    if (inboundEmail) {
+      unreadFilter.$or = [
+        { to: inboundEmail },
+        { to: `<${inboundEmail}>` },
+        { cc: inboundEmail },
+        { cc: `<${inboundEmail}>` }
+      ];
+    }
+    const unreadCount = await InboxMessage.countDocuments(unreadFilter);
 
     return res.status(200).json({
       success: true,
