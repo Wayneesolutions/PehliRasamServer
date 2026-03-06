@@ -54,6 +54,10 @@ const preferencesFieldsSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  order: {
+    type: Number,
+    default: 0,
+  },
 }, { timestamps: true });
 
 const PreferencesFields = mongoose.model("PreferencesFields", preferencesFieldsSchema);

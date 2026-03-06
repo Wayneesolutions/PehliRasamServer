@@ -32,6 +32,8 @@ const {
   updatePresetsOrder,
   updatePresetFieldOrder,
   updatePresetFieldsOrder,
+  updatePreferencesFieldsOrder,
+  updatePreferencesGroupsOrder,
   createFromField,
   updateFormField,
   changeFormFieldGroup,
@@ -340,6 +342,10 @@ router.post('/updatePresetGroupOrder', checkAdminToken, updatePresetGroupOrder)
 router.post('/updatePresetsOrder', checkAdminToken, updatePresetsOrder)
 router.post('/updatePresetFieldOrder', checkAdminToken, updatePresetFieldOrder)
 router.post('/updatePresetFieldsOrder', checkAdminToken, updatePresetFieldsOrder)
+
+// Update preferences group and field order routes
+router.post('/updatePreferencesGroupsOrder', checkAdminToken, updatePreferencesGroupsOrder)
+router.post('/updatePreferencesFieldsOrder', checkAdminToken, updatePreferencesFieldsOrder)
 
 // Inbox routes
 router.get('/inbox/messages', checkAdminToken, getInboxMessages)

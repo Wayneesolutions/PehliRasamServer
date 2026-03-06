@@ -2740,9 +2740,16 @@ exports.getAllPreferencesGroupFields = async (req, res) => {
         $match: { "fields.isDeleted": false }
       },
       {
+        $sort: {
+          "fields.order": 1,
+          "fields.createdAt": 1
+        }
+      },
+      {
         $group: {
           _id: "$_id",
           groupName: { $first: "$name" },
+          groupOrder: { $first: "$order" },
           fields: {
             $push: {
               fieldId: "$fields._id",
@@ -2754,13 +2761,14 @@ exports.getAllPreferencesGroupFields = async (req, res) => {
               choices: "$fields.choices",
               helpText: "$fields.helpText",
               dealBreak: "$fields.dealBreak",
-              isActive: "$fields.isActive"
+              isActive: "$fields.isActive",
+              order: "$fields.order"
             }
           }
         }
       },
       {
-        $sort: { groupName: 1 }
+        $sort: { groupOrder: 1, groupName: 1 }
       }
     ]);
 
@@ -6570,6 +6578,196 @@ exports.updateFieldsOrder = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error updating fields order",
+      error: error.message
+    });
+  }
+};
+
+// Bulk update preferences field order (similar to updateFieldsOrder)
+exports.updatePreferencesFieldsOrder = async (req, res) => {
+  try {
+    const { fields } = req.body; // Array of { id, position }
+    const editedBy = req.id;
+
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Fields array with id and position is required" 
+      });
+    }
+
+    // Validate all fields belong to the same group
+    const fieldIds = fields.map(f => f.id);
+    const allFields = await PreferencesFields.find({ 
+      _id: { $in: fieldIds },
+      isDeleted: false 
+    });
+
+    if (allFields.length !== fieldIds.length) {
+      return res.status(404).json({ 
+        success: false,
+        message: "One or more fields not found" 
+      });
+    }
+
+    // Check all fields belong to the same group
+    const groupIds = [...new Set(allFields.map(f => f.preferencesGroupId.toString()))];
+    if (groupIds.length > 1) {
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields must belong to the same group" 
+      });
+    }
+
+    // Update all fields with their new positions
+    const updatePromises = fields.map(({ id, position }) => 
+      PreferencesFields.findByIdAndUpdate(
+        id,
+        { 
+          order: position,
+          editedBy: editedBy
+        },
+        { new: true }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated groups with fields using the same aggregation as getAllPreferencesGroupFields
+    const groupFieldList = await PreferencesGroup.aggregate([
+      {
+        $match: { isDeleted: false }
+      },
+      {
+        $lookup: {
+          from: "preferencesfields",
+          localField: "_id",
+          foreignField: "preferencesGroupId",
+          as: "fields"
+        }
+      },
+      {
+        $unwind: {
+          path: "$fields",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $match: { "fields.isDeleted": false }
+      },
+      {
+        $sort: {
+          "fields.order": 1,
+          "fields.createdAt": 1
+        }
+      },
+      {
+        $group: {
+          _id: "$_id",
+          groupName: { $first: "$name" },
+          groupOrder: { $first: "$order" },
+          fields: {
+            $push: {
+              fieldId: "$fields._id",
+              fieldName: "$fields.label",
+              profileField: "$fields.profileField",
+              clientTypes: "$fields.clientTypes",
+              weight: "$fields.weight",
+              useInMatch: "$fields.useInMatch",
+              choices: "$fields.choices",
+              helpText: "$fields.helpText",
+              dealBreak: "$fields.dealBreak",
+              isActive: "$fields.isActive",
+              order: "$fields.order"
+            }
+          }
+        }
+      },
+      {
+        $sort: { groupOrder: 1, groupName: 1 }
+      }
+    ]);
+
+    // Sort fields within each group by order
+    groupFieldList.forEach(group => {
+      if (group.fields && Array.isArray(group.fields)) {
+        group.fields.sort((a, b) => {
+          const orderA = a.order !== undefined ? a.order : 999;
+          const orderB = b.order !== undefined ? b.order : 999;
+          return orderA - orderB;
+        });
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Preferences fields order updated successfully.",
+      data: groupFieldList
+    });
+  } catch (error) {
+    console.error("Error updating preferences fields order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating preferences fields order",
+      error: error.message
+    });
+  }
+};
+
+// Bulk update preferences group order
+exports.updatePreferencesGroupsOrder = async (req, res) => {
+  try {
+    const { groups } = req.body; // Array of { id, position }
+    const editedBy = req.id;
+
+    if (!groups || !Array.isArray(groups) || groups.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Groups array with id and position is required" 
+      });
+    }
+
+    const groupIds = groups.map(g => g.id);
+    const allGroups = await PreferencesGroup.find({ 
+      _id: { $in: groupIds },
+      isDeleted: false 
+    });
+
+    if (allGroups.length !== groupIds.length) {
+      return res.status(404).json({ 
+        success: false,
+        message: "One or more groups not found" 
+      });
+    }
+
+    // Update all groups with their new positions
+    const updatePromises = groups.map(({ id, position }) => 
+      PreferencesGroup.findByIdAndUpdate(
+        id,
+        { 
+          order: position,
+          editedBy: editedBy
+        },
+        { new: true }
+      )
+    );
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated groups
+    const updatedGroups = await PreferencesGroup.find({ isDeleted: false })
+      .sort({ order: 1, createdAt: 1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Preferences groups order updated successfully.",
+      data: updatedGroups
+    });
+  } catch (error) {
+    console.error("Error updating preferences groups order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating preferences groups order",
       error: error.message
     });
   }
