@@ -52,6 +52,7 @@ const {
   getCustomerProfileDetail,
   getCustomerMatchPreferencesDetail,
   advancedSearchCustomers,
+  getDistinctCountries,
 
   getMatchGroupDetails,
   getMatchingSuggestions,
@@ -223,6 +224,7 @@ router.post("/customerProfile", checkAdminToken, getCustomerProfile)
 router.get("/allActiveCustomer", checkAdminToken, allActiveCustomer)
 router.post("/getCustomerBasicDetail", checkAdminToken, getCustomerBasicDetail)
 router.post("/advancedSearchCustomers", checkAdminToken, advancedSearchCustomers)
+router.get("/distinctCountries", checkAdminToken, getDistinctCountries)
 router.post("/getCustomerProfileDetail", checkAdminToken, getCustomerProfileDetail)
 router.post("/getCustomerMatchPreferencesDetail", checkAdminToken, getCustomerMatchPreferencesDetail)
 router.post("/getMatchGroupDetails", checkAdminToken, getMatchGroupDetails)

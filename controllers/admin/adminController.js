@@ -1935,10 +1935,51 @@ exports.advancedSearchCustomers = async (req, res) => {
       if ((field === "birthday" || field === "height") && (!Array.isArray(value) || (!value[0] && !value[1]))) {
         continue;
       }
-      if (field !== "location" && field !== "registeredOnDate" && field !== "birthday" && field !== "height" && field !== "registeredBy" && (!value || !value.trim())) {
-        continue;
+      if (field !== "location" && field !== "registeredOnDate" && field !== "birthday" && field !== "height" && field !== "registeredBy" && field !== "country") {
+        // Multi-select fields now send arrays
+        if (!Array.isArray(value) || value.filter(v => (v || "").toString().trim()).length === 0) {
+          continue;
+        }
       }
-      if (field === "registeredBy" && (!value || !value.trim())) {
+      if (field === "registeredBy") {
+        if (!Array.isArray(value) || value.filter(v => (v || "").toString().trim()).length === 0) {
+          continue;
+        }
+      }
+      if (field === "country") {
+        if (!Array.isArray(value) || value.filter(v => (v || "").toString().trim()).length === 0) {
+          continue;
+        }
+      }
+
+      // Handle country search (exact match against Customer.address.country)
+      if (field === "country") {
+        const selectedCountries = Array.isArray(value) ? value : [];
+        const allowed = new Set(
+          selectedCountries
+            .map(v => (v || "").toString().trim().toLowerCase())
+            .filter(v => v.length > 0)
+        );
+
+        const currentCustomers = await Customer.find(
+          {
+            _id: { $in: Array.from(filteredCustomerIds).map(id => new mongoose.Types.ObjectId(id)) },
+            activeStatus: true,
+            isDeleted: false
+          },
+          { _id: 1, address: 1 }
+        );
+
+        const countryMatches = currentCustomers
+          .filter(customer => {
+            const country = customer.address?.country?.toString().trim().toLowerCase() || "";
+            return country && allowed.has(country);
+          })
+          .map(c => c._id.toString());
+
+        filteredCustomerIds = new Set(
+          Array.from(filteredCustomerIds).filter(id => countryMatches.includes(id))
+        );
         continue;
       }
 
@@ -2015,16 +2056,10 @@ exports.advancedSearchCustomers = async (req, res) => {
 
       // Handle registeredBy (uses Customer createdBy field)
       if (field === "registeredBy") {
-        const registeredByValue = value.trim().toLowerCase();
-        
-        // Normalize the value to handle various formats
-        // Support both old format (admin, self, referral) and new dynamic format
-        const normalizedValue = registeredByValue
-          .replace(/\s+/g, '') // Remove all spaces
-          .replace(/registration/gi, '') // Remove "registration" word
-          .replace(/self/gi, 'self')
-          .replace(/admin/gi, 'admin')
-          .replace(/referral/gi, 'referral');
+        const selected = Array.isArray(value) ? value : [];
+        const selectedSet = new Set(
+          selected.map(v => (v || "").toString().trim().toLowerCase()).filter(v => v.length > 0)
+        );
         
         // Get current filtered customers with createdBy field
         const currentCustomers = await Customer.find(
@@ -2037,25 +2072,13 @@ exports.advancedSearchCustomers = async (req, res) => {
         );
         
         const registeredByMatches = currentCustomers.filter(customer => {
-          // Handle admin variations (admin, Admin, etc.)
-          if (normalizedValue.includes('admin')) {
-            // Customer was created by admin (has createdBy field)
-            return customer.createdBy != null;
-          } 
-          // Handle self-registration variations (self, selfregistration, etc.)
-          else if (normalizedValue.includes('self')) {
-            // Customer self-registered (no createdBy field)
-            return customer.createdBy == null;
-          } 
-          // Handle referral variations
-          else if (normalizedValue.includes('referral')) {
-            // For now, treat referral same as self-registration
-            // TODO: Add referral tracking field to Customer model
-            return customer.createdBy == null;
-          }
-          // For any other value, default to checking if createdBy is null (self-registered)
-          // This allows for future expansion of registeredBy options
-          return customer.createdBy == null;
+          const isAdminCreated = customer.createdBy != null;
+          const isSelfCreated = customer.createdBy == null;
+
+          let match = false;
+          if (selectedSet.has("admin") && isAdminCreated) match = true;
+          if ((selectedSet.has("self") || selectedSet.has("referral")) && isSelfCreated) match = true;
+          return match;
         }).map(c => c._id.toString());
         
         // Intersect with current filtered IDs
@@ -2184,7 +2207,12 @@ exports.advancedSearchCustomers = async (req, res) => {
       }
 
       // Handle exact match fields (gender, caste, maritalStatus, membershipType, registeredBy)
-      const searchValue = value.trim().toLowerCase();
+      const selectedValues = Array.isArray(value) ? value : [];
+      const allowedValues = new Set(
+        selectedValues
+          .map(v => (v || "").toString().trim().toLowerCase())
+          .filter(v => v.length > 0)
+      );
 
       // Get all values for this field for current filtered customers
       const fieldValues = await FormFieldsValue.find({
@@ -2202,7 +2230,7 @@ exports.advancedSearchCustomers = async (req, res) => {
         
         // Use exact match (case-insensitive) for select fields like gender, caste, etc.
         // This ensures "male" only matches "male" and not "female"
-        if (storedValue === searchValue) {
+        if (allowedValues.has(storedValue)) {
           matchingCustomerIds.add(fieldValue.customerId.toString());
         }
       }
@@ -2244,6 +2272,37 @@ exports.advancedSearchCustomers = async (req, res) => {
       success: false,
       message: "Error performing advanced search",
       error: error.message
+    });
+  }
+};
+
+/**
+ * Get distinct countries from active customers (for Advanced Search dropdown)
+ */
+exports.getDistinctCountries = async (req, res) => {
+  try {
+    const countries = await Customer.distinct("address.country", {
+      activeStatus: true,
+      isDeleted: false,
+      "address.country": { $exists: true, $ne: "" },
+    });
+
+    const normalized = (countries || [])
+      .map((c) => (typeof c === "string" ? c.trim() : ""))
+      .filter((c) => c.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+
+    return res.status(200).json({
+      success: true,
+      message: "Countries fetched successfully",
+      data: normalized,
+    });
+  } catch (error) {
+    console.error("Error in getDistinctCountries:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching countries",
+      error: error.message,
     });
   }
 };
