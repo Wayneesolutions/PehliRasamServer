@@ -450,6 +450,45 @@ const processIncomingEmails = async () => {
           continue;
         }
 
+        // Detect bounce-back emails (mail delivery failures) and skip them
+        // These are automated error messages from mail servers, NOT customer replies
+        const fromLower = (email.from || '').toLowerCase();
+        const fromNameLower = (email.fromName || '').toLowerCase();
+        const subjectLower = (email.subject || '').toLowerCase();
+        const bodyLower = ((email.text || '') + ' ' + (email.html || '')).toLowerCase();
+        
+        const isBounceBack = 
+          // Check sender patterns
+          fromLower.includes('mailer-daemon') ||
+          fromLower.includes('mail delivery') ||
+          fromLower.includes('postmaster@') ||
+          fromNameLower.includes('mail delivery system') ||
+          fromNameLower.includes('mailer-daemon') ||
+          // Check subject patterns
+          subjectLower.includes('mail delivery failed') ||
+          subjectLower.includes('delivery status notification') ||
+          subjectLower.includes('undelivered mail') ||
+          subjectLower.includes('returned mail') ||
+          subjectLower.includes('returning message to sender') ||
+          // Check body patterns
+          bodyLower.includes('mail delivery failed') ||
+          bodyLower.includes('could not be delivered') ||
+          bodyLower.includes('permanent error') ||
+          bodyLower.includes('550-5.1.1') ||
+          bodyLower.includes('nosuchuser') ||
+          bodyLower.includes('reporting-mta') ||
+          bodyLower.includes('final-recipient') ||
+          bodyLower.includes('diagnostic-code');
+        
+        if (isBounceBack) {
+          console.log(`   ⚠️  Bounce-back email detected (mail delivery failure) - skipping save to inbox`);
+          console.log(`   From: ${email.from}`);
+          console.log(`   Subject: ${email.subject}`);
+          // Mark as processed but don't save to inbox
+          processedEmails.add(email.uid);
+          continue;
+        }
+
         // Check if this is a REPLY (used to decide if it is project-related)
         const hasReplyHeaders = !!(email.inReplyTo || (email.references && email.references.length > 0));
         const hasReplySubject = email.subject && (email.subject.startsWith('Re:') || email.subject.startsWith('RE:'));

@@ -7980,6 +7980,83 @@ exports.markMessageAsUnread = async (req, res) => {
 /**
  * Delete inbox message (soft delete)
  */
+/**
+ * Cleanup bounce-back emails from inbox
+ * Admin endpoint to delete all bounce-back emails from database
+ */
+exports.cleanupBounceBackEmails = async (req, res) => {
+  try {
+    // Detect if an email is a bounce-back
+    const isBounceBack = (email) => {
+      const fromLower = (email.from || '').toLowerCase();
+      const fromNameLower = (email.fromName || '').toLowerCase();
+      const subjectLower = (email.subject || '').toLowerCase();
+      const bodyLower = ((email.textBody || '') + ' ' + (email.body || '')).toLowerCase();
+      
+      return (
+        // Check sender patterns
+        fromLower.includes('mailer-daemon') ||
+        fromLower.includes('mail delivery') ||
+        fromLower.includes('postmaster@') ||
+        fromNameLower.includes('mail delivery system') ||
+        fromNameLower.includes('mailer-daemon') ||
+        // Check subject patterns
+        subjectLower.includes('mail delivery failed') ||
+        subjectLower.includes('delivery status notification') ||
+        subjectLower.includes('undelivered mail') ||
+        subjectLower.includes('returned mail') ||
+        subjectLower.includes('returning message to sender') ||
+        // Check body patterns
+        bodyLower.includes('mail delivery failed') ||
+        bodyLower.includes('could not be delivered') ||
+        bodyLower.includes('permanent error') ||
+        bodyLower.includes('550-5.1.1') ||
+        bodyLower.includes('nosuchuser') ||
+        bodyLower.includes('reporting-mta') ||
+        bodyLower.includes('final-recipient') ||
+        bodyLower.includes('diagnostic-code')
+      );
+    };
+
+    // Find all non-deleted inbox messages
+    const allMessages = await InboxMessage.find({ isDeleted: false });
+    
+    const bounceBackIds = [];
+    
+    // Check each message
+    for (const msg of allMessages) {
+      if (isBounceBack(msg)) {
+        bounceBackIds.push(msg._id);
+      }
+    }
+    
+    if (bounceBackIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No bounce-back emails found. Database is clean!',
+        deletedCount: 0
+      });
+    }
+    
+    // Delete bounce-back emails
+    const deleteResult = await InboxMessage.deleteMany({ _id: { $in: bounceBackIds } });
+    
+    res.status(200).json({
+      success: true,
+      message: `Successfully deleted ${deleteResult.deletedCount} bounce-back email(s) from database`,
+      deletedCount: deleteResult.deletedCount
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning up bounce-back emails:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error cleaning up bounce-back emails',
+      error: error.message
+    });
+  }
+};
+
 exports.deleteInboxMessage = async (req, res) => {
   try {
     const { id } = req.params;

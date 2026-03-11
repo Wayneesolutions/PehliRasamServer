@@ -148,7 +148,8 @@ const {
   deleteInboxMessage,
   getUnreadCount,
   getCustomerInbox,
-  toggleStarMessage
+  toggleStarMessage,
+  cleanupBounceBackEmails
   // searchMailLogs
 } = require('../../controllers/admin/adminController');
 
@@ -356,6 +357,7 @@ router.delete('/inbox/message/:id', checkAdminToken, deleteInboxMessage)
 router.get('/inbox/unread-count', checkAdminToken, getUnreadCount)
 router.get('/inbox/customer/:customerId', checkAdminToken, getCustomerInbox)
 router.post('/inbox/message/:id/star', checkAdminToken, toggleStarMessage)
+router.post('/inbox/cleanup-bounce-emails', cleanupBounceBackEmails)
 
 
 module.exports = router;
