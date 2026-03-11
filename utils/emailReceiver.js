@@ -219,7 +219,9 @@ const connectAndFetchEmails = (imapConfig) => {
 };
 
 /**
- * Process incoming emails and track customer replies
+ * Process incoming emails:
+ * - Inbound Email: Save to inbox (for tracking customer replies to emails sent from software)
+ * - Contact Email: Send auto-reply (if enabled) - NOT saved to inbox
  */
 const processIncomingEmails = async () => {
   try {
@@ -230,58 +232,46 @@ const processIncomingEmails = async () => {
     // Get email settings
     const settings = await EmailSettings.getOrCreate();
 
-    // Check if Contact Email is configured for auto-reply
-    console.log('📧 Checking auto-reply configuration...');
-    console.log(`   Contact email: ${settings.contactEmail || '(not set)'}`);
+    console.log('📧 Checking email configuration...');
+    console.log(`   Inbound email: ${settings.inboundEmail || '(not set)'} - for inbox tracking`);
+    console.log(`   Contact email: ${settings.contactEmail || '(not set)'} - for auto-reply`);
     console.log(`   Auto-reply enabled: ${settings.autoReplyEnabled ? 'Yes' : 'No'}`);
     
-    // Determine which email to check for auto-reply
-    // If Contact Email is configured and auto-reply is enabled, use Contact Email
-    // Otherwise, fall back to Inbound Email for inbox tracking only
-    const useContactEmailForAutoReply = settings.autoReplyEnabled && settings.contactEmail && settings.contactEmailSmtp;
-    const emailToCheck = useContactEmailForAutoReply ? settings.contactEmail : settings.inboundEmail;
-    const emailType = useContactEmailForAutoReply ? 'Contact Email' : 'Inbound Email';
-    
-    if (!emailToCheck) {
-      const missingField = useContactEmailForAutoReply 
-        ? 'Contact Email or Contact Email SMTP settings'
-        : 'Inbound email';
-      console.log(`❌ ${missingField} not configured. Please set it in email settings.`);
-      return { processed: 0, saved: 0 };
+    // Need at least Inbound Email OR Contact Email configured
+    if (!settings.inboundEmail && !settings.contactEmail) {
+      console.log(`❌ Neither Inbound Email nor Contact Email configured. Please configure at least one in email settings.`);
+      return { processed: 0, saved: 0, replied: 0 };
     }
 
-    // Determine IMAP settings to use
-    // If using Contact Email for auto-reply, use Contact Email SMTP credentials for IMAP
-    // Otherwise, use existing IMAP settings
+    // Determine which IMAP account to use
+    // Priority: Use IMAP settings if configured, otherwise infer from Contact Email SMTP
     let imapConfig;
     
-    if (useContactEmailForAutoReply) {
-      // Use Contact Email SMTP credentials for IMAP (same email account)
-      if (!settings.contactEmailSmtp || !settings.contactEmailSmtp.host || !settings.contactEmailSmtp.username || !settings.contactEmailSmtp.password) {
-        console.log('❌ Contact Email SMTP settings not configured. Please configure Contact Email SMTP settings in email settings.');
-        return { processed: 0, saved: 0 };
-      }
+    if (settings.imapSettings && settings.imapSettings.host && settings.imapSettings.username && settings.imapSettings.password) {
+      // Use configured IMAP settings (for Inbound Email)
+      console.log(`   Using IMAP settings for Inbound Email inbox tracking`);
+      console.log(`   IMAP Host: ${settings.imapSettings.host}`);
+      console.log(`   IMAP Username: ${settings.imapSettings.username}`);
       
-      // Determine IMAP port and secure setting based on SMTP port
-      const smtpPort = parseInt(settings.contactEmailSmtp.port) || 587;
-      // For Gmail: IMAP port 993 (SSL) or 143 (STARTTLS)
-      // Use 993 if SMTP port is 465 (SSL), otherwise use 993 for Gmail or 143 for others
-      let imapPort = 993;
-      let imapSecure = true;
+      const imapPort = parseInt(settings.imapSettings.port) || 993;
+      const imapSecure = settings.imapSettings.secure !== false;
       
-      if (settings.contactEmailSmtp.host.includes('gmail.com')) {
-        imapPort = 993; // Gmail IMAP SSL
-        imapSecure = true;
-      } else {
-        // For other providers, try to infer from SMTP port
-        if (smtpPort === 465) {
-          imapPort = 993; // SSL
-          imapSecure = true;
-        } else {
-          imapPort = 143; // STARTTLS
-          imapSecure = false;
-        }
-      }
+      imapConfig = {
+        user: settings.imapSettings.username,
+        password: settings.imapSettings.password.trim(),
+        host: settings.imapSettings.host,
+        port: imapPort,
+        tls: imapSecure,
+        tlsOptions: { rejectUnauthorized: false },
+        connTimeout: 60000,
+        authTimeout: 60000
+      };
+    } else if (settings.contactEmail && settings.contactEmailSmtp && 
+               settings.contactEmailSmtp.host && settings.contactEmailSmtp.username && settings.contactEmailSmtp.password) {
+      // Infer IMAP settings from Contact Email SMTP (for auto-reply)
+      console.log(`   Using Contact Email SMTP to infer IMAP settings for auto-reply`);
+      console.log(`   Contact Email SMTP Host: ${settings.contactEmailSmtp.host}`);
+      console.log(`   Contact Email SMTP Username: ${settings.contactEmailSmtp.username}`);
       
       // Determine IMAP host from SMTP host
       let imapHost = settings.contactEmailSmtp.host;
@@ -297,6 +287,22 @@ const processIncomingEmails = async () => {
         imapHost = `imap.${domain}`;
       }
       
+      // Determine IMAP port and secure setting
+      const smtpPort = parseInt(settings.contactEmailSmtp.port) || 587;
+      let imapPort = 993;
+      let imapSecure = true;
+      
+      if (imapHost.includes('gmail.com')) {
+        imapPort = 993;
+        imapSecure = true;
+      } else if (smtpPort === 465) {
+        imapPort = 993;
+        imapSecure = true;
+      } else {
+        imapPort = 993; // Default to 993 for most providers
+        imapSecure = true;
+      }
+      
       imapConfig = {
         user: settings.contactEmailSmtp.username,
         password: settings.contactEmailSmtp.password.trim(),
@@ -307,34 +313,9 @@ const processIncomingEmails = async () => {
         connTimeout: 60000,
         authTimeout: 60000
       };
-      
-      console.log(`   Using ${emailType} for auto-reply`);
-      console.log(`   IMAP Host: ${imapConfig.host}`);
-      console.log(`   IMAP Username: ${imapConfig.user}`);
     } else {
-      // Use existing IMAP settings for Inbound Email (inbox tracking only, no auto-reply)
-      console.log(`   Using ${emailType} for inbox tracking (no auto-reply)`);
-      console.log(`   IMAP Host: ${settings.imapSettings?.host || '(not set)'}`);
-      console.log(`   IMAP Username: ${settings.imapSettings?.username || '(not set)'}`);
-      
-      if (!settings.imapSettings || !settings.imapSettings.host || !settings.imapSettings.username || !settings.imapSettings.password) {
-        console.log('❌ IMAP settings not configured. Please configure IMAP settings in email settings.');
-        return { processed: 0, saved: 0 };
-      }
-
-      const imapPort = parseInt(settings.imapSettings.port) || 993;
-      const imapSecure = settings.imapSettings.secure !== false;
-      
-      imapConfig = {
-        user: settings.imapSettings.username,
-        password: settings.imapSettings.password.trim(),
-        host: settings.imapSettings.host,
-        port: imapPort,
-        tls: imapSecure,
-        tlsOptions: { rejectUnauthorized: false },
-        connTimeout: 60000,
-        authTimeout: 60000
-      };
+      console.log('❌ IMAP settings not configured. Please configure IMAP settings or Contact Email SMTP settings.');
+      return { processed: 0, saved: 0, replied: 0 };
     }
     
     // Log configuration for debugging
@@ -402,8 +383,8 @@ const processIncomingEmails = async () => {
 
     console.log(`📧 Found ${emails.length} new email(s)`);
 
-    let repliedCount = 0;
     let savedCount = 0;
+    let repliedCount = 0;
 
     // Process each email
     for (const email of emails) {
@@ -415,83 +396,49 @@ const processIncomingEmails = async () => {
         console.log(`   Subject: ${email.subject}`);
         console.log(`   Message-ID: ${email.messageId}`);
         
-        // Check if email is sent to Contact Email (for auto-reply) or Inbound Email (for inbox tracking)
+        // Check recipients
         const emailToString = Array.isArray(email.to) ? email.to.join(',').toLowerCase() : (email.to || '').toLowerCase();
         const emailCcString = Array.isArray(email.cc) ? email.cc.join(',').toLowerCase() : '';
         const allRecipients = (emailToString + ',' + emailCcString).toLowerCase();
         
-        const contactEmailLower = settings.contactEmail ? settings.contactEmail.toLowerCase() : '';
         const inboundEmailLower = settings.inboundEmail ? settings.inboundEmail.toLowerCase() : '';
-        const replyToEmails = settings.replyToEmail ? settings.replyToEmail.split(',').map(e => e.trim().toLowerCase()) : [];
-        const inboundEmailDomain = inboundEmailLower ? inboundEmailLower.split('@')[1] : null;
+        const contactEmailLower = settings.contactEmail ? settings.contactEmail.toLowerCase() : '';
         
         console.log(`   🔍 Checking recipients against:`);
-        if (useContactEmailForAutoReply) {
-          console.log(`      Contact email (for auto-reply): ${settings.contactEmail}`);
-        }
         if (settings.inboundEmail) {
           console.log(`      Inbound email (for inbox tracking): ${settings.inboundEmail}`);
         }
-        if (replyToEmails.length > 0) {
-          console.log(`      Reply-to emails: ${replyToEmails.join(', ')}`);
+        if (settings.contactEmail) {
+          console.log(`      Contact email (for auto-reply): ${settings.contactEmail}`);
         }
         
-        // Check if email is sent to Contact Email (for auto-reply)
-        const isToContactEmail = useContactEmailForAutoReply && contactEmailLower && 
-                                 (allRecipients.includes(contactEmailLower) || 
-                                  allRecipients.includes(`<${contactEmailLower}>`));
-        
-        // Check if email is sent to inbound address (for inbox tracking only, no auto-reply)
+        // Check if email is sent to Inbound Email address (for inbox tracking)
         const isToInboundEmail = inboundEmailLower && 
                                  (allRecipients.includes(inboundEmailLower) || 
                                   allRecipients.includes(`<${inboundEmailLower}>`));
         
-        // Check if email is sent to any reply-to addresses (check To and CC fields)
-        const isToReplyToEmail = replyToEmails.length > 0 && replyToEmails.some(replyEmail => 
-          allRecipients.includes(replyEmail) || allRecipients.includes(`<${replyEmail}>`)
-        );
-        
-        // Also check if it's sent to the domain (for catch-all or aliases)
-        const isToDomain = inboundEmailDomain && allRecipients.includes(`@${inboundEmailDomain}`);
+        // Check if email is sent to Contact Email address (for auto-reply)
+        const isToContactEmail = contactEmailLower && 
+                                 (allRecipients.includes(contactEmailLower) || 
+                                  allRecipients.includes(`<${contactEmailLower}>`));
 
-        // Log which conditions matched
-        if (isToContactEmail) {
-          console.log(`   ✅ Matched: Contact email (${settings.contactEmail}) - will send auto-reply`);
-        }
-        if (isToInboundEmail) {
-          console.log(`   ✅ Matched: Inbound email (${settings.inboundEmail}) - will save to inbox`);
-        }
-        if (isToReplyToEmail) {
-          const matchedEmails = replyToEmails.filter(email => allRecipients.includes(email));
-          console.log(`   ✅ Matched: Reply-to email (${matchedEmails.join(', ')})`);
-        }
-        if (isToDomain) {
-          console.log(`   ✅ Matched: Domain (@${inboundEmailDomain})`);
-        }
-
-        // Accept email if it's sent to Contact Email (for auto-reply) OR Inbound Email (for inbox tracking)
-        // OR reply-to emails OR domain
-        const shouldProcess = isToContactEmail || isToInboundEmail || isToReplyToEmail || isToDomain;
-        
-        if (!shouldProcess) {
-          console.log(`   ❌ Email NOT sent to any monitored address, skipping`);
+        // Only process emails sent to Inbound Email OR Contact Email
+        if (!isToInboundEmail && !isToContactEmail) {
+          console.log(`   ❌ Email NOT sent to Inbound Email or Contact Email, skipping`);
           console.log(`   Email recipients: ${emailToString}`);
-          console.log(`   Expected one of:`);
-          if (useContactEmailForAutoReply) {
-            console.log(`      - Contact email (for auto-reply): ${settings.contactEmail}`);
-          }
           if (settings.inboundEmail) {
-            console.log(`      - Inbound email (for inbox tracking): ${settings.inboundEmail}`);
-          }
-          if (replyToEmails.length > 0) {
-            console.log(`      - Reply-to: ${replyToEmails.join(', ')}`);
-          }
-          if (inboundEmailDomain) {
-            console.log(`      - Domain: @${inboundEmailDomain}`);
+            console.log(`   Expected: ${settings.inboundEmail} (for inbox) or ${settings.contactEmail || '(not set)'} (for auto-reply)`);
           }
           // Mark as processed anyway to avoid reprocessing
           processedEmails.add(email.uid);
           continue;
+        }
+
+        if (isToInboundEmail) {
+          console.log(`   ✅ Matched: Inbound email (${settings.inboundEmail}) - will save to inbox`);
+        }
+        if (isToContactEmail) {
+          console.log(`   ✅ Matched: Contact email (${settings.contactEmail}) - will send auto-reply`);
         }
         
         // Extract sender email
@@ -503,92 +450,66 @@ const processIncomingEmails = async () => {
           continue;
         }
 
-        // Check if this is a REPLY (customer replying to our emails)
-        // An email is considered a reply if:
-        // 1. Has In-Reply-To or References headers, OR
-        // 2. Subject starts with "Re:" or "RE:"
+        // Check if this is a REPLY (used to decide if it is project-related)
         const hasReplyHeaders = !!(email.inReplyTo || (email.references && email.references.length > 0));
         const hasReplySubject = email.subject && (email.subject.startsWith('Re:') || email.subject.startsWith('RE:'));
         const isReply = hasReplyHeaders || hasReplySubject;
         
-        console.log(`   🔍 Checking if email is a reply...`);
-        console.log(`      Subject: ${email.subject}`);
-        console.log(`      Starts with Re: ${hasReplySubject ? 'YES' : 'NO'}`);
-        console.log(`      In-Reply-To: ${email.inReplyTo || '(none)'}`);
-        console.log(`      References: ${email.references?.join(', ') || '(none)'}`);
-        
-        // Try to match against our sent emails (optional - for better tracking)
-        let matchedSentEmail = null;
-        if (isReply && (email.inReplyTo || (email.references && email.references.length > 0))) {
-          const messageIdsToCheck = [email.inReplyTo, ...(email.references || [])].filter(Boolean);
-          
-          if (messageIdsToCheck.length > 0) {
-            try {
-              matchedSentEmail = await MailLog.findOne({ 
-                messageId: { $in: messageIdsToCheck }
-              });
-              
-              if (matchedSentEmail) {
-                console.log(`   ✅ Matched to our sent email!`);
-                console.log(`      Original email to: ${matchedSentEmail.to}`);
-                console.log(`      Original subject: ${matchedSentEmail.subject}`);
-              }
-            } catch (checkError) {
-              console.error(`   ⚠️  Error matching sent email:`, checkError.message);
-            }
-          }
-        }
-        
         if (isReply) {
-          console.log(`   ✅ Email is a REPLY (will be saved to inbox)`);
-        } else {
-          console.log(`   ❌ Email is NOT a reply (automated/unsolicited - will be skipped)`);
+          console.log(`   ℹ️  Email is a reply`);
         }
         
-        // Save to inbox if email is sent to INBOUND email address OR Contact Email address
-        const shouldSaveToInbox = isToInboundEmail || (useContactEmailForAutoReply && isToContactEmail);
-        
-        // Determine if we should send auto-reply (only for Contact Email messages)
-        const shouldSendAutoReply = useContactEmailForAutoReply && isToContactEmail && 
-                                    settings.autoReplyEnabled && 
-                                    settings.autoReplyMessage && 
-                                    settings.contactEmail;
-        
-        if (shouldSaveToInbox) {
-          if (isToContactEmail) {
-            console.log(`   ✅ Email qualifies for inbox - will be saved (sent to contact email)`);
-          } else {
-            console.log(`   ✅ Email qualifies for inbox - will be saved (sent to inbound address)`);
-          }
-          if (isReply) {
-            console.log(`   ℹ️  Email is also a reply`);
-          }
-        } else if (shouldSendAutoReply) {
-          console.log(`   ✅ Email qualifies for auto-reply - will send auto-reply (sent to contact email)`);
-        } else if (!shouldSaveToInbox && !shouldSendAutoReply) {
-          console.log(`   ℹ️  Email processed but not saved to inbox or auto-replied`);
-        }
-
-        // Save email to inbox (for Inbound Email) OR send auto-reply (for Contact Email)
-        // If Contact Email message, save to inbox AND send auto-reply
+        // Check if email already exists in database (avoid duplicates)
+        const existingEmail = await InboxMessage.findOne({ messageId: email.messageId });
         let inboxMessage = null;
-        let matchedCustomer = null;
         
-        if (shouldSaveToInbox || shouldSendAutoReply) {
-          // Check if email already exists in database (avoid duplicates)
-          const existingEmail = await InboxMessage.findOne({ messageId: email.messageId });
+        // Save emails to inbox ONLY if they are project-related:
+        // - Customer reply to an email that was sent from this software (MailLog match)
+        if (isToInboundEmail) {
           if (existingEmail) {
             console.log(`   ⚠️  Email already exists in database (Message-ID: ${email.messageId})`);
             inboxMessage = existingEmail;
-            // If it's a Contact Email message and auto-reply wasn't sent yet, send it now
-            if (shouldSendAutoReply && !existingEmail.hasAutoReplied) {
-              // Will send auto-reply below
-            } else {
-              processedEmails.add(email.uid);
-              continue;
-            }
+            // Don't skip - continue to check for auto-reply if needed
           } else {
+            // Only store project-related emails in inbox
+            let matchedSentEmail = null;
+            try {
+              // 1) Best: match by Message-IDs in reply headers
+              const messageIdsToCheck = [
+                email.inReplyTo,
+                ...(Array.isArray(email.references) ? email.references : [])
+              ].filter(Boolean);
+              
+              if (messageIdsToCheck.length > 0) {
+                matchedSentEmail = await MailLog.findOne({
+                  messageId: { $in: messageIdsToCheck }
+                });
+              }
+              
+              // 2) Fallback: match by sender + subject (strip Re:) for recent sent emails
+              if (!matchedSentEmail && isReply && email.subject) {
+                const baseSubject = email.subject.replace(/^\s*re:\s*/i, '').trim();
+                const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24 * 90); // last 90 days
+                
+                matchedSentEmail = await MailLog.findOne({
+                  to: { $regex: new RegExp(`^${senderEmail}$`, 'i') },
+                  subject: { $regex: new RegExp(`^${baseSubject}$`, 'i') },
+                  sentAt: { $gte: cutoff }
+                }).sort({ sentAt: -1 });
+              }
+            } catch (matchSentError) {
+              console.error(`   ⚠️  Error matching sent email (MailLog):`, matchSentError.message);
+            }
+
+            if (!matchedSentEmail) {
+              console.log(`   ❌ Not project-related (no MailLog match) - skipping save to inbox`);
+              // Do NOT save to inbox; still allow auto-reply if this email also targets Contact Email
+              // Mark as processed later at end of loop
+            } else {
+              console.log(`   ✅ Project-related reply matched to sent email (MailLog ID: ${matchedSentEmail._id})`);
+
             // Try to match sender with existing customer
+            let matchedCustomer = null;
             try {
               matchedCustomer = await Customer.findOne({ 
                 email: { $regex: new RegExp(`^${senderEmail}$`, 'i') },
@@ -606,25 +527,25 @@ const processIncomingEmails = async () => {
             // Save email to inbox
             try {
               inboxMessage = new InboxMessage({
-              messageId: email.messageId,
-              from: senderEmail,
-              fromName: email.fromName || '',
-              to: email.to || [],
-              cc: email.cc || [],
-              subject: email.subject || '(No Subject)',
-              body: email.html || email.text || '',
-              textBody: email.text || '',
-              receivedAt: new Date(),
-              emailDate: email.date || new Date(),
-              customerId: matchedCustomer ? matchedCustomer._id : null,
-              customerMatched: !!matchedCustomer,
-              inReplyTo: email.inReplyTo,
-              references: email.references || [],
-              isRead: false,
-              hasAutoReplied: false,
-              attachments: email.attachments || [],
-              rawHeaders: email.headers || {}
-            });
+                messageId: email.messageId,
+                from: senderEmail,
+                fromName: email.fromName || '',
+                to: email.to || [],
+                cc: email.cc || [],
+                subject: email.subject || '(No Subject)',
+                body: email.html || email.text || '',
+                textBody: email.text || '',
+                receivedAt: new Date(),
+                emailDate: email.date || new Date(),
+                customerId: matchedCustomer ? matchedCustomer._id : null,
+                customerMatched: !!matchedCustomer,
+                inReplyTo: email.inReplyTo,
+                references: email.references || [],
+                isRead: false,
+                hasAutoReplied: false,
+                attachments: email.attachments || [],
+                rawHeaders: email.headers || {}
+              });
 
               await inboxMessage.save();
               console.log(`   ✅ Email saved to inbox (ID: ${inboxMessage._id})`);
@@ -632,298 +553,112 @@ const processIncomingEmails = async () => {
             } catch (saveError) {
               console.error(`   ❌ Error saving email to inbox:`, saveError.message);
             }
-          }
-          
-          // Send auto-reply for Contact Email messages
-          if (shouldSendAutoReply && inboxMessage) {
-
-            // Send notification to contact email (only for Inbound Email messages, not Contact Email)
-            if (settings.contactEmail && isToInboundEmail && !isToContactEmail) {
-              try {
-                console.log(`   📧 Sending notification to contact email: ${settings.contactEmail}`);
-                
-                const customerName = matchedCustomer 
-                  ? `${matchedCustomer.firstName} ${matchedCustomer.lastName}` 
-                  : email.fromName || senderEmail;
-                
-                const notificationSubject = `New Customer Reply: ${email.subject}`;
-                const notificationHtml = `
-                  <!DOCTYPE html>
-                  <html>
-                    <head>
-                      <style>
-                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-                        .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-top: none; }
-                        .info-box { background-color: white; padding: 15px; margin: 10px 0; border-left: 4px solid #4CAF50; }
-                        .label { font-weight: bold; color: #555; }
-                        .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
-                        .message-preview { background-color: #fff; padding: 15px; border: 1px solid #ddd; margin: 10px 0; border-radius: 3px; }
-                      </style>
-                    </head>
-                    <body>
-                      <div class="container">
-                        <div class="header">
-                          <h2>📬 New Customer Reply Received</h2>
-                        </div>
-                        <div class="content">
-                          <p>A customer has replied to your email. Here are the details:</p>
-                          
-                          <div class="info-box">
-                            <p><span class="label">From:</span> ${customerName}</p>
-                            <p><span class="label">Email:</span> ${senderEmail}</p>
-                            ${matchedCustomer ? `<p><span class="label">Customer ID:</span> ${matchedCustomer._id}</p>` : ''}
-                          </div>
-                          
-                          <div class="info-box">
-                            <p><span class="label">Subject:</span> ${email.subject}</p>
-                            <p><span class="label">Received:</span> ${new Date().toLocaleString()}</p>
-                          </div>
-                          
-                          <div class="message-preview">
-                            <p class="label">Message Preview:</p>
-                            <p>${(email.text || '').substring(0, 300)}${(email.text || '').length > 300 ? '...' : ''}</p>
-                          </div>
-                          
-                          <p style="margin-top: 20px;">
-                            <strong>Action Required:</strong> Please log in to your dashboard to view and respond to this message.
-                          </p>
-                        </div>
-                        <div class="footer">
-                          <p>This is an automated notification from Pehli Rasam CRM</p>
-                          <p>Inbound Email: ${settings.inboundEmail}</p>
-                        </div>
-                      </div>
-                    </body>
-                  </html>
-                `;
-                
-                const notificationText = `
-New Customer Reply Received
-
-From: ${customerName}
-Email: ${senderEmail}
-${matchedCustomer ? `Customer ID: ${matchedCustomer._id}` : ''}
-
-Subject: ${email.subject}
-Received: ${new Date().toLocaleString()}
-
-Message Preview:
-${(email.text || '').substring(0, 300)}${(email.text || '').length > 300 ? '...' : ''}
-
-Action Required: Please log in to your dashboard to view and respond to this message.
-
----
-This is an automated notification from Pehli Rasam CRM
-Inbound Email: ${settings.inboundEmail}
-                `;
-                
-                const notificationResult = await sendEmail({
-                  to: settings.contactEmail,
-                  subject: notificationSubject,
-                  html: notificationHtml,
-                  text: notificationText
-                });
-                
-                if (notificationResult.success) {
-                  console.log(`   ✅ Notification sent to contact email successfully`);
-                } else {
-                  console.error(`   ⚠️  Failed to send notification to contact email:`, notificationResult.error?.message);
-                }
-              } catch (notifyError) {
-                console.error(`   ⚠️  Error sending notification to contact email:`, notifyError.message);
-              }
-            } else {
-              console.log(`   ℹ️  No contact email configured - skipping notification`);
-            }
-
-            try {
-                // Check if Contact Email SMTP is configured
-                const hasContactEmailSmtp = settings.contactEmailSmtp && 
-                                           settings.contactEmailSmtp.host && 
-                                           settings.contactEmailSmtp.username && 
-                                           settings.contactEmailSmtp.password;
-                
-                if (!hasContactEmailSmtp) {
-                  console.log(`   ⚠️  Auto-reply enabled but Contact Email SMTP not configured - skipping`);
-                  console.log(`   💡 Please configure SMTP settings for Contact Email in Email Settings`);
-                } else {
-                  console.log(`   📧 Auto-reply enabled - sending reply to customer: ${senderEmail}`);
-                  console.log(`   📧 Using Contact Email SMTP: ${settings.contactEmailSmtp.username}`);
-                  
-                  // Create nodemailer transporter for Contact Email
-                  const nodemailer = require('nodemailer');
-                  const contactPort = parseInt(settings.contactEmailSmtp.port) || 587;
-                  const contactSecure = contactPort === 465 || settings.contactEmailSmtp.connectionType === 'ssl';
-                  
-                  const contactTransporter = nodemailer.createTransport({
-                    host: settings.contactEmailSmtp.host,
-                    port: contactPort,
-                    secure: contactSecure,
-                    auth: {
-                      user: settings.contactEmailSmtp.username,
-                      pass: settings.contactEmailSmtp.password.trim()
-                    },
-                    tls: {
-                      rejectUnauthorized: false
-                    }
-                  });
-                  
-                  const autoReplySubject = email.subject.startsWith('Re:') 
-                    ? email.subject 
-                    : `Re: ${email.subject}`;
-                  
-                  const autoReplyHtml = `
-                    <!DOCTYPE html>
-                    <html>
-                      <head>
-                        <style>
-                          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                          .message { background-color: #f9f9f9; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; }
-                          .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; border-top: 1px solid #ddd; margin-top: 20px; }
-                        </style>
-                      </head>
-                      <body>
-                        <div class="container">
-                          <div class="message">
-                            <p>${settings.autoReplyMessage.replace(/\n/g, '<br>')}</p>
-                          </div>
-                          <div class="footer">
-                            <p>This is an automated response from Pehli Rasam</p>
-                          </div>
-                        </div>
-                      </body>
-                    </html>
-                  `;
-                  
-                  const mailOptions = {
-                    from: `"Pehli Rasam" <${settings.contactEmail}>`,
-                    to: senderEmail,
-                    subject: autoReplySubject,
-                    html: autoReplyHtml,
-                    text: settings.autoReplyMessage
-                  };
-                  
-                  const autoReplyResult = await contactTransporter.sendMail(mailOptions);
-                  
-                  if (autoReplyResult) {
-                    console.log(`   ✅ Auto-reply sent to customer successfully from ${settings.contactEmail}`);
-                    
-                    // Update the inbox message to mark that auto-reply was sent (if message was saved to inbox)
-                    if (inboxMessage) {
-                      try {
-                        await InboxMessage.findByIdAndUpdate(inboxMessage._id, {
-                          hasAutoReplied: true,
-                          autoRepliedAt: new Date()
-                        });
-                      } catch (updateError) {
-                        console.error(`   ⚠️  Failed to update hasAutoReplied flag:`, updateError.message);
-                      }
-                    }
-                  }
-                }
-            } catch (autoReplyError) {
-              console.error(`   ⚠️  Error sending auto-reply:`, autoReplyError.message);
-            }
-          } else if (shouldSendAutoReply && !inboxMessage) {
-            // Contact Email message but couldn't save to inbox - still try to send auto-reply
-            console.log(`   ⚠️  Could not save Contact Email message to inbox, but will attempt to send auto-reply`);
-            try {
-              // Check if Contact Email SMTP is configured
-              const hasContactEmailSmtp = settings.contactEmailSmtp && 
-                                         settings.contactEmailSmtp.host && 
-                                         settings.contactEmailSmtp.username && 
-                                         settings.contactEmailSmtp.password;
-              
-              if (!hasContactEmailSmtp) {
-                console.log(`   ⚠️  Auto-reply enabled but Contact Email SMTP not configured - skipping`);
-                console.log(`   💡 Please configure SMTP settings for Contact Email in Email Settings`);
-              } else {
-                console.log(`   📧 Auto-reply enabled - sending reply to customer: ${senderEmail}`);
-                console.log(`   📧 Using Contact Email SMTP: ${settings.contactEmailSmtp.username}`);
-                
-                // Create nodemailer transporter for Contact Email
-                const nodemailer = require('nodemailer');
-                const contactPort = parseInt(settings.contactEmailSmtp.port) || 587;
-                const contactSecure = contactPort === 465 || settings.contactEmailSmtp.connectionType === 'ssl';
-                
-                const contactTransporter = nodemailer.createTransport({
-                  host: settings.contactEmailSmtp.host,
-                  port: contactPort,
-                  secure: contactSecure,
-                  auth: {
-                    user: settings.contactEmailSmtp.username,
-                    pass: settings.contactEmailSmtp.password.trim()
-                  },
-                  tls: {
-                    rejectUnauthorized: false
-                  }
-                });
-                
-                const autoReplySubject = email.subject.startsWith('Re:') 
-                  ? email.subject 
-                  : `Re: ${email.subject}`;
-                
-                const autoReplyHtml = `
-                  <!DOCTYPE html>
-                  <html>
-                    <head>
-                      <style>
-                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                        .message { background-color: #f9f9f9; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; }
-                        .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; border-top: 1px solid #ddd; margin-top: 20px; }
-                      </style>
-                    </head>
-                    <body>
-                      <div class="container">
-                        <div class="message">
-                          <p>${settings.autoReplyMessage.replace(/\n/g, '<br>')}</p>
-                        </div>
-                        <div class="footer">
-                          <p>This is an automated response from Pehli Rasam</p>
-                        </div>
-                      </div>
-                    </body>
-                  </html>
-                `;
-                
-                const mailOptions = {
-                  from: `"Pehli Rasam" <${settings.contactEmail}>`,
-                  to: senderEmail,
-                  subject: autoReplySubject,
-                  html: autoReplyHtml,
-                  text: settings.autoReplyMessage
-                };
-                
-                const autoReplyResult = await contactTransporter.sendMail(mailOptions);
-                
-                if (autoReplyResult) {
-                  console.log(`   ✅ Auto-reply sent to customer successfully from ${settings.contactEmail}`);
-                }
-              }
-            } catch (autoReplyError) {
-              console.error(`   ⚠️  Error sending auto-reply:`, autoReplyError.message);
-            }
-          } else if (shouldSendAutoReply) {
-            // Contact Email message but auto-reply conditions not met
-            if (!settings.autoReplyEnabled) {
-              console.log(`   ℹ️  Auto-reply disabled - skipping`);
-            } else if (!settings.autoReplyMessage) {
-              console.log(`   ⚠️  Auto-reply enabled but no message configured - skipping`);
-            } else if (!settings.contactEmail) {
-              console.log(`   ⚠️  Auto-reply enabled but no contact email configured - skipping`);
-            } else if (!settings.contactEmailSmtp || !settings.contactEmailSmtp.host || !settings.contactEmailSmtp.username || !settings.contactEmailSmtp.password) {
-              console.log(`   ⚠️  Auto-reply enabled but Contact Email SMTP not configured - skipping`);
             }
           }
-        } else {
-          // Email not sent to Contact Email or Inbound Email - skip processing
-          console.log(`   📧 Email not sent to Contact Email or Inbound Email - skipping`);
         }
-
+        
+        // Send auto-reply for Contact Email messages (if enabled)
+        // Only send if not already replied (check existing email or inbox message)
+        const alreadyReplied = existingEmail?.hasAutoReplied || inboxMessage?.hasAutoReplied;
+        
+        if (isToContactEmail && settings.autoReplyEnabled && settings.autoReplyMessage && settings.contactEmail && !alreadyReplied) {
+          // Check if Contact Email SMTP is configured
+          const hasContactEmailSmtp = settings.contactEmailSmtp && 
+                                     settings.contactEmailSmtp.host && 
+                                     settings.contactEmailSmtp.username && 
+                                     settings.contactEmailSmtp.password;
+          
+          if (!hasContactEmailSmtp) {
+            console.log(`   ⚠️  Auto-reply enabled but Contact Email SMTP not configured - skipping`);
+            console.log(`   💡 Please configure SMTP settings for Contact Email in Email Settings`);
+          } else {
+            try {
+              console.log(`   📧 Sending auto-reply to customer: ${senderEmail}`);
+              console.log(`   📧 Using Contact Email SMTP: ${settings.contactEmailSmtp.username}`);
+              
+              // Create nodemailer transporter for Contact Email
+              const nodemailer = require('nodemailer');
+              const contactPort = parseInt(settings.contactEmailSmtp.port) || 587;
+              const contactSecure = contactPort === 465 || settings.contactEmailSmtp.connectionType === 'ssl';
+              
+              const contactTransporter = nodemailer.createTransport({
+                host: settings.contactEmailSmtp.host,
+                port: contactPort,
+                secure: contactSecure,
+                auth: {
+                  user: settings.contactEmailSmtp.username,
+                  pass: settings.contactEmailSmtp.password.trim()
+                },
+                tls: {
+                  rejectUnauthorized: false
+                }
+              });
+              
+              const autoReplySubject = email.subject.startsWith('Re:') 
+                ? email.subject 
+                : `Re: ${email.subject}`;
+              
+              const autoReplyHtml = `
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <style>
+                      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                      .message { background-color: #f9f9f9; padding: 20px; border-left: 4px solid #4CAF50; margin: 20px 0; }
+                      .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; border-top: 1px solid #ddd; margin-top: 20px; }
+                    </style>
+                  </head>
+                  <body>
+                    <div class="container">
+                      <div class="message">
+                        <p>${settings.autoReplyMessage.replace(/\n/g, '<br>')}</p>
+                      </div>
+                      <div class="footer">
+                        <p>This is an automated response from Pehli Rasam</p>
+                      </div>
+                    </div>
+                  </body>
+                </html>
+              `;
+              
+              const mailOptions = {
+                from: `"Pehli Rasam" <${settings.contactEmail}>`,
+                to: senderEmail,
+                subject: autoReplySubject,
+                html: autoReplyHtml,
+                text: settings.autoReplyMessage
+              };
+              
+              const autoReplyResult = await contactTransporter.sendMail(mailOptions);
+              
+              if (autoReplyResult) {
+                console.log(`   ✅ Auto-reply sent to customer successfully from ${settings.contactEmail}`);
+                repliedCount++;
+                
+                // If email was also saved to inbox, update the hasAutoReplied flag
+                if (inboxMessage) {
+                  try {
+                    await InboxMessage.findByIdAndUpdate(inboxMessage._id, {
+                      hasAutoReplied: true,
+                      autoRepliedAt: new Date()
+                    });
+                    console.log(`   ✅ Updated inbox message with auto-reply flag`);
+                  } catch (updateError) {
+                    console.error(`   ⚠️  Failed to update hasAutoReplied flag:`, updateError.message);
+                  }
+                }
+              }
+            } catch (autoReplyError) {
+              console.error(`   ⚠️  Error sending auto-reply:`, autoReplyError.message);
+            }
+          }
+        } else if (isToContactEmail && alreadyReplied) {
+          console.log(`   ℹ️  Email sent to Contact Email but auto-reply already sent`);
+        } else if (isToContactEmail && !settings.autoReplyEnabled) {
+          console.log(`   ℹ️  Email sent to Contact Email but auto-reply is disabled`);
+        }
+        
         // Mark email as processed
         processedEmails.add(email.uid);
 
@@ -945,13 +680,13 @@ Inbound Email: ${settings.inboundEmail}
     console.log(`\n📧 Summary:`);
     console.log(`   Processed: ${emails.length} email(s)`);
     console.log(`   Saved to inbox: ${savedCount} email(s)`);
-    console.log(`   Auto-reply: Disabled (tracking only)`);
+    console.log(`   Auto-replies sent: ${repliedCount} email(s)`);
 
-    return { processed: emails.length, saved: savedCount, replied: 0 };
+    return { processed: emails.length, saved: savedCount, replied: repliedCount };
 
   } catch (error) {
     console.error('❌ Error in processIncomingEmails:', error.message);
-    return { processed: 0, replied: 0, error: error.message };
+    return { processed: 0, saved: 0, error: error.message };
   }
 };
 

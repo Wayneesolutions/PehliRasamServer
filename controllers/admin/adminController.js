@@ -3400,6 +3400,33 @@ exports.createMatchGroupValue = async (req, res) => {
 
     const saved = await value.save();
 
+    // Activity Log (shows on client timeline)
+    try {
+      const group = await MatchGroup.findById(matchGroupId).select("groupName");
+      const groupName = group?.groupName || "Match Group";
+
+      const matchIds = Array.isArray(matchCustomerId) ? matchCustomerId : [matchCustomerId];
+      const firstMatch = matchIds?.[0] ? await Customer.findById(matchIds[0]).select("firstName middelName lastName") : null;
+      const firstMatchName = firstMatch
+        ? [firstMatch.firstName, firstMatch.middelName, firstMatch.lastName].filter(Boolean).join(" ")
+        : "Client";
+
+      await ActivityLog.create({
+        customerId,
+        performedBy: createdBy,
+        action: "Match created",
+        changeSummary: `Created match${matchIds.length > 1 ? ` (${matchIds.length} clients)` : ""} in "${groupName}" with ${firstMatchName}`,
+        metadata: {
+          type: "matching",
+          matchGroupId,
+          matchCustomerIds: matchIds,
+          matchingDescription: matchingDescription || "",
+        },
+      });
+    } catch (logErr) {
+      console.error("⚠️  Failed to create ActivityLog for createMatchGroupValue:", logErr?.message || logErr);
+    }
+
     res.status(201).json({
       success: true,
       message: "Match group value created successfully.",
@@ -3516,6 +3543,11 @@ exports.updateMatchGroupValue = async (req, res) => {
       });
     }
 
+    // Keep old values for timeline summary
+    const oldGroupId = existing.matchGroupId?.toString?.() || existing.matchGroupId;
+    const oldNotes = existing.notes || "";
+    const oldDesc = existing.matchingDescription || "";
+
     if (matchGroupId !== undefined) existing.matchGroupId = matchGroupId;
     if (customerId !== undefined) existing.customerId = customerId;
     if (matchCustomerId !== undefined) existing.matchCustomerId = matchCustomerId;
@@ -3524,6 +3556,59 @@ exports.updateMatchGroupValue = async (req, res) => {
     existing.editedBy = editedBy;
 
     const updated = await existing.save();
+
+    // Activity Log (shows on client timeline)
+    try {
+      const effectiveCustomerId = customerId !== undefined ? customerId : updated.customerId?.toString?.() || updated.customerId;
+      const newGroupId = updated.matchGroupId?.toString?.() || updated.matchGroupId;
+
+      const [oldGroup, newGroup] = await Promise.all([
+        oldGroupId ? MatchGroup.findById(oldGroupId).select("groupName") : null,
+        newGroupId ? MatchGroup.findById(newGroupId).select("groupName") : null,
+      ]);
+
+      const oldGroupName = oldGroup?.groupName || "Previous Group";
+      const newGroupName = newGroup?.groupName || "Match Group";
+
+      const matchIds = Array.isArray(updated.matchCustomerId) ? updated.matchCustomerId : [updated.matchCustomerId];
+      const firstMatch = matchIds?.[0] ? await Customer.findById(matchIds[0]).select("firstName middelName lastName") : null;
+      const firstMatchName = firstMatch
+        ? [firstMatch.firstName, firstMatch.middelName, firstMatch.lastName].filter(Boolean).join(" ")
+        : "Client";
+
+      const changedParts = [];
+      const didMoveGroup = matchGroupId !== undefined && oldGroupId && newGroupId && oldGroupId.toString() !== newGroupId.toString();
+      const didChangeNotes = notes !== undefined && (notes || "") !== oldNotes;
+      const didChangeDesc = matchingDescription !== undefined && (matchingDescription || "") !== oldDesc;
+
+      if (didMoveGroup) changedParts.push(`Moved match to "${newGroupName}"`);
+      if (didChangeNotes) changedParts.push(`Updated match notes`);
+      if (didChangeDesc) changedParts.push(`Updated match description`);
+
+      const summary =
+        changedParts.length > 0
+          ? `${changedParts.join(", ")} for ${firstMatchName}`
+          : `Updated match for ${firstMatchName}`;
+
+      await ActivityLog.create({
+        customerId: effectiveCustomerId,
+        performedBy: editedBy,
+        action: didMoveGroup ? "Match moved" : "Match updated",
+        changeSummary: didMoveGroup
+          ? `Moved match ${firstMatchName} from "${oldGroupName}" to "${newGroupName}"`
+          : summary,
+        metadata: {
+          type: "matching",
+          matchGroupId: newGroupId,
+          previousMatchGroupId: oldGroupId,
+          matchCustomerIds: matchIds,
+          notesChanged: didChangeNotes,
+          descriptionChanged: didChangeDesc,
+        },
+      });
+    } catch (logErr) {
+      console.error("⚠️  Failed to create ActivityLog for updateMatchGroupValue:", logErr?.message || logErr);
+    }
 
     res.status(200).json({
       success: true,
@@ -3560,6 +3645,35 @@ exports.deleteMatchGroupValue = async (req, res) => {
     matchGroupValue.editedBy = editedBy;
 
     const deleted = await matchGroupValue.save();
+
+    // Activity Log (shows on client timeline)
+    try {
+      const group = matchGroupValue.matchGroupId
+        ? await MatchGroup.findById(matchGroupValue.matchGroupId).select("groupName")
+        : null;
+      const groupName = group?.groupName || "Match Group";
+
+      const matchIds = Array.isArray(matchGroupValue.matchCustomerId) ? matchGroupValue.matchCustomerId : [matchGroupValue.matchCustomerId];
+      const firstMatch = matchIds?.[0] ? await Customer.findById(matchIds[0]).select("firstName middelName lastName") : null;
+      const firstMatchName = firstMatch
+        ? [firstMatch.firstName, firstMatch.middelName, firstMatch.lastName].filter(Boolean).join(" ")
+        : "Client";
+
+      await ActivityLog.create({
+        customerId: matchGroupValue.customerId,
+        performedBy: editedBy,
+        action: "Match deleted",
+        changeSummary: `Deleted match ${firstMatchName} from "${groupName}"`,
+        metadata: {
+          type: "matching",
+          matchGroupId: matchGroupValue.matchGroupId,
+          matchCustomerIds: matchIds,
+          matchGroupValueId: matchGroupValue._id,
+        },
+      });
+    } catch (logErr) {
+      console.error("⚠️  Failed to create ActivityLog for deleteMatchGroupValue:", logErr?.message || logErr);
+    }
 
     res.status(200).json({
       success: true,
